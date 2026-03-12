@@ -8,21 +8,7 @@ import { analyticsService, studentService } from '../services/api';
 import Sidebar from '../components/Sidebar';
 import { AlertCircle, Briefcase, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-
-/**
- * Branch Normalization Mapping
- * Maps short branch codes to possible full branch names in database
- */
-const BRANCH_MAPPING = {
-  'IT': ['IT', 'Information Technology', 'IT Engineering'],
-  'CP': ['CP', 'Computer Engineering', 'Computer'],
-  'CSE': ['CSE', 'Computer Science', 'Computer Science Engineering'],
-  'Mechanical': ['Mechanical', 'Mechanical Engineering'],
-  'Electrical': ['Electrical', 'Electrical Engineering', 'EE'],
-  'Civil': ['Civil', 'Civil Engineering'],
-  'EC': ['EC', 'Electronics', 'Electronics & Communication', 'E&C'],
-  'Instrumentation': ['Instrumentation', 'Instrumentation Engineering'],
-};
+import { normalizeBranchName, branchesMatch } from '../utils/branch';
 
 export default function SkillDemand() {
   const [studentBranch, setStudentBranch] = useState('');
@@ -44,7 +30,7 @@ export default function SkillDemand() {
       // 1. Fetch student profile to get branch
       console.log('[SkillDemand] Fetching student profile...');
       const studentRes = await studentService.getProfile();
-      const branch = studentRes.data.data.branch;
+      const branch = normalizeBranchName(studentRes.data.data.branch);
       console.log('[SkillDemand] Student branch from profile:', branch);
       setStudentBranch(branch);
 
@@ -54,12 +40,8 @@ export default function SkillDemand() {
       const allJobRoles = rolesRes.data.data;
       console.log('[SkillDemand] Total job roles fetched:', allJobRoles.length);
 
-      // 3. Get normalized branch names for matching
-      const normalizedBranches = getNormalizedBranchNames(branch);
-      console.log('[SkillDemand] Normalized branch names for matching:', normalizedBranches);
-
-      // 4. Filter job roles by branch
-      const filtered = filterJobRolesByBranch(allJobRoles, normalizedBranches);
+      // 3. Filter job roles by canonical full branch name
+      const filtered = filterJobRolesByBranch(allJobRoles, branch);
       console.log('[SkillDemand] Filtered job roles count:', filtered.length);
       console.log('[SkillDemand] Filtered job roles:', filtered.map(r => r.job_role));
 
@@ -126,40 +108,16 @@ export default function SkillDemand() {
   };
 
   /**
-   * Get all possible branch name variations for matching
-   * @param {string} studentBranch - Branch code from student profile
-   * @returns {Array<string>} - All variations of branch name to match against
-   */
-  const getNormalizedBranchNames = (studentBranch) => {
-    // Check if branch is in our mapping
-    for (const [code, names] of Object.entries(BRANCH_MAPPING)) {
-      if (code === studentBranch) {
-        console.log(`[getNormalizedBranchNames] Found mapping for "${studentBranch}":`, names);
-        return names;
-      }
-    }
-    
-    // If not in mapping, return the branch as-is (fallback)
-    console.log(`[getNormalizedBranchNames] No mapping found for "${studentBranch}", using as-is`);
-    return [studentBranch];
-  };
-
-  /**
    * Filter job roles to only those matching student's branch
    * @param {Array} jobRoles - All job roles from database
-   * @param {Array<string>} normalizedBranches - Branch name variations to match
+   * @param {string} normalizedStudentBranch - Canonical student branch name
    * @returns {Array} - Job roles applicable to student's branch
    */
-  const filterJobRolesByBranch = (jobRoles, normalizedBranches) => {
+  const filterJobRolesByBranch = (jobRoles, normalizedStudentBranch) => {
     return jobRoles.filter((role) => {
       const eligibleBranches = role.eligible_branches || [];
-      
-      // Check if ANY eligible branch matches ANY normalized branch name
-      const matches = eligibleBranches.some((eligible) =>
-        normalizedBranches.some((normalized) =>
-          eligible.toLowerCase().trim() === normalized.toLowerCase().trim()
-        )
-      );
+
+      const matches = eligibleBranches.some((eligible) => branchesMatch(eligible, normalizedStudentBranch));
       
       if (matches) {
         console.log(`[filterJobRolesByBranch] ✓ Matched: "${role.job_role}" eligible for ${eligibleBranches.join(', ')}`);

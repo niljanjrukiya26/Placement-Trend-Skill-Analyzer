@@ -9,6 +9,10 @@ if __name__ == '__main__':
     config_name = os.getenv('FLASK_ENV', 'development')
     app = create_app(config_name)
     
+    @app.route('/')
+    def home():
+        return "Backend Running..."
+    
     # Run the Flask development server
     print("\n" + "="*50)
     print("Placement Trend Analyzer Backend API")

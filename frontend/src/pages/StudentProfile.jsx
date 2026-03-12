@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { studentService, analyticsService } from '../services/api';
 import Sidebar from '../components/Sidebar';
 import { AlertCircle, CheckCircle, User, BookOpen, Code, Save, X } from 'lucide-react';
+import { normalizeBranchName, branchesMatch } from '../utils/branch';
 
 export default function StudentProfile() {
   const [student, setStudent] = useState(null);
@@ -15,21 +16,6 @@ export default function StudentProfile() {
   const [selectedSkills, setSelectedSkills] = useState([]);
   const [interestedSelectValue, setInterestedSelectValue] = useState('');
   const [skillInputValue, setSkillInputValue] = useState('');
-
-  /**
-   * BRANCH NORMALIZATION MAPPING
-   * Maps student branch codes to eligible_branches values in job_roles collection
-   * This ensures proper matching between student branch and job role requirements
-   */
-  const BRANCH_MAPPING = {
-    'IT': ['IT', 'Information Technology'],
-    'CP': ['Computer Engineering', 'Computer', 'CP'],
-    'CSE': ['Computer Science', 'CSE', 'Computer Science & Engineering'],
-    'ECE': ['Electronics and Communication', 'ECE', 'Electronics & Communication Engineering'],
-    'Mechanical': ['Mechanical', 'Mechanical Engineering'],
-    'Civil': ['Civil', 'Civil Engineering'],
-    'Electrical': ['Electrical', 'Electrical Engineering'],
-  };
 
   useEffect(() => {
     fetchProfile();
@@ -79,18 +65,12 @@ export default function StudentProfile() {
       const allJobRoles = response.data.data || [];
 
       // Get normalized branch names for the student's branch
-      const studentBranch = student.branch;
-      const normalizedBranches = BRANCH_MAPPING[studentBranch] || [studentBranch];
+      const normalizedStudentBranch = normalizeBranchName(student.branch);
 
-      // Filter job roles where eligible_branches includes student's normalized branch
+      // Filter job roles by canonical branch match.
       const branchMatchedJobRoles = allJobRoles.filter((jobRole) => {
         const eligibleBranches = jobRole.eligible_branches || [];
-        return eligibleBranches.some((eligibleBranch) =>
-          normalizedBranches.some((normalizedBranch) =>
-            eligibleBranch.toLowerCase().includes(normalizedBranch.toLowerCase()) ||
-            normalizedBranch.toLowerCase().includes(eligibleBranch.toLowerCase())
-          )
-        );
+        return eligibleBranches.some((eligibleBranch) => branchesMatch(eligibleBranch, normalizedStudentBranch));
       });
 
       // Extract unique interested fields (job_role names)

@@ -7,6 +7,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from pymongo.errors import PyMongoError
 from bson.objectid import ObjectId
 from app.utils import error_response, success_response, role_required
+from app.branch_utils import normalize_branch_name
 
 student_bp = Blueprint('student', __name__, url_prefix='/api/student')
 
@@ -38,7 +39,7 @@ def get_student_profile():
         student_data = {
             'userid': student.get('userid'),
             'student_id': student.get('student_id'),
-            'branch': student.get('branch'),
+            'branch': normalize_branch_name(student.get('branch')),
             'cgpa': student.get('cgpa'),
             'backlogs': student.get('backlogs'),
             'interested_field': student.get('interested_field'),
@@ -124,7 +125,7 @@ def get_placement_status():
         
         placement_data = {
             'student_id': placement.get('student_id'),
-            'branch': placement.get('branch'),
+            'branch': normalize_branch_name(placement.get('branch')),
             'cgpa': placement.get('cgpa'),
             'backlogs': placement.get('backlogs'),
             'placement_year': placement.get('placement_year'),

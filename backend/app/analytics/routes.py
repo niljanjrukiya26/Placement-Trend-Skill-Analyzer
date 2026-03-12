@@ -6,6 +6,7 @@ from flask import Blueprint, request, current_app
 from flask_jwt_extended import jwt_required
 from pymongo.errors import PyMongoError
 from app.utils import error_response, success_response
+from app.branch_utils import normalize_branch_name
 
 analytics_bp = Blueprint('analytics', __name__, url_prefix='/api/analytics')
 
@@ -130,7 +131,39 @@ def get_branchwise_placement():
             }
         ]
         
-        results = list(db.placement_records.aggregate(pipeline))
+        raw_results = list(db.placement_records.aggregate(pipeline))
+
+        # Normalize branch labels and merge duplicate buckets caused by legacy codes.
+        merged_stats = {}
+        for row in raw_results:
+            normalized_branch = normalize_branch_name(row.get('branch', ''))
+            if not normalized_branch:
+                continue
+
+            if normalized_branch not in merged_stats:
+                merged_stats[normalized_branch] = {
+                    'branch': normalized_branch,
+                    'total_students': 0,
+                    'placed_students': 0
+                }
+
+            merged_stats[normalized_branch]['total_students'] += row.get('total_students', 0)
+            merged_stats[normalized_branch]['placed_students'] += row.get('placed_students', 0)
+
+        results = []
+        for branch, stats in merged_stats.items():
+            total_students = stats['total_students']
+            placed_students = stats['placed_students']
+            placement_percentage = round((placed_students / total_students) * 100, 2) if total_students else 0
+
+            results.append({
+                'branch': branch,
+                'total_students': total_students,
+                'placed_students': placed_students,
+                'placement_percentage': placement_percentage
+            })
+
+        results.sort(key=lambda item: item['branch'])
         
         if not results:
             return success_response([], f'No placement data found for year {year}', 200)
@@ -234,6 +267,45 @@ def get_companies_overview():
         return error_response(f'Database error: {str(e)}', 500)
     except Exception as e:
         return error_response(f'Server error: {str(e)}', 500)
+
+
+@analytics_bp.route('/domain-job-roles', methods=['GET'])
+@jwt_required()
+def get_domain_job_roles():
+    """
+    Get domain-wise job roles from domain_job_roles collection.
+    Optional query parameters:
+        - domain: exact domain name match
+        - branch: branch value (normalized to canonical full name)
+    """
+    try:
+        db = current_app.mongo_db
+
+        domain = request.args.get('domain', type=str)
+        branch = request.args.get('branch', type=str)
+
+        query = {}
+        if domain:
+            query['domain'] = domain.strip()
+
+        if branch:
+            normalized_branch = normalize_branch_name(branch)
+            if normalized_branch:
+                query['eligible_branches'] = normalized_branch
+
+        domain_roles = list(db.domain_job_roles.find(query, {'_id': 0}))
+
+        if not domain_roles:
+            return success_response([], 'No domain job roles found', 200)
+
+        return success_response(domain_roles, 'Domain job roles retrieved successfully', 200)
+
+    except PyMongoError as e:
+        return error_response(f'Database error: {str(e)}', 500)
+    except Exception as e:
+        return error_response(f'Server error: {str(e)}', 500)
+
+
 @analytics_bp.route('/job-roles', methods=['GET'])
 @jwt_required()
 def get_job_roles():

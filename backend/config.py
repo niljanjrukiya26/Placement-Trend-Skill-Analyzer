@@ -15,7 +15,7 @@ class Config:
     
     # MongoDB Configuration
     MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
-    DB_NAME = os.getenv('DB_NAME', 'placement_analyzer')
+    DB_NAME = os.getenv('DB_NAME', 'placement_trend_skill_db')
     
     # API Configuration
     JSON_SORT_KEYS = False

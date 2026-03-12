@@ -5,6 +5,7 @@ MONGODB_COLLECTIONS = {
     'placement_records': 'Placement outcomes and records',
     'companies': 'Company information and job openings',
     'job_roles': 'Job role templates with requirements',
+    'domain_job_roles': 'Domain-wise job role templates with branch eligibility',
     'tpo': 'TPO officer profiles'
 }
 

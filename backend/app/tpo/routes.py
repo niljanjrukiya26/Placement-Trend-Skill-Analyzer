@@ -6,6 +6,7 @@ from flask import Blueprint, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from pymongo.errors import PyMongoError
 from app.utils import error_response, success_response, role_required
+from app.branch_utils import normalize_branch_name
 
 tpo_bp = Blueprint('tpo', __name__, url_prefix='/api/tpo')
 
@@ -34,11 +35,13 @@ def get_tpo_profile():
             return error_response('TPO profile not found', 404)
         
         # Clean response
+        normalized_branch = normalize_branch_name(tpo.get('branch'))
+
         tpo_data = {
             'userid': tpo.get('userid'),
             'tpo_id': tpo.get('tpo_id'),
             'tpo_name': tpo.get('tpo_name'),
-            'branch': tpo.get('branch')
+            'branch': normalized_branch
         }
         
         return success_response(tpo_data, 'TPO profile retrieved', 200)
@@ -70,7 +73,7 @@ def get_branch_students():
         if not tpo:
             return error_response('TPO profile not found', 404)
         
-        branch = tpo.get('branch')
+        branch = normalize_branch_name(tpo.get('branch'))
         
         # Find all students in the branch
         students = list(db.students.find(
@@ -109,7 +112,7 @@ def get_placement_records():
         if not tpo:
             return error_response('TPO profile not found', 404)
         
-        branch = tpo.get('branch')
+        branch = normalize_branch_name(tpo.get('branch'))
         
         # Build query
         query = {'branch': branch}
@@ -152,7 +155,7 @@ def get_branch_statistics():
         if not tpo:
             return error_response('TPO profile not found', 404)
         
-        branch = tpo.get('branch')
+        branch = normalize_branch_name(tpo.get('branch'))
         
         # Get total students
         total_students = db.students.count_documents({'branch': branch})

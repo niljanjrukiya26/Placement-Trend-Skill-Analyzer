@@ -91,6 +91,9 @@ export const analyticsService = {
   
   getJobRoles: () =>
     apiClient.get('/analytics/job-roles'),
+
+  getDomainJobRoles: (params = {}) =>
+    apiClient.get('/analytics/domain-job-roles', { params }),
   
   getCompaniesOverview: () =>
     apiClient.get('/analytics/companies/overview'),

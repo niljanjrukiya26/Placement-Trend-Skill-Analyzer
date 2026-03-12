@@ -13,7 +13,8 @@ import ForgotPassword from './pages/ForgotPassword';
 import StudentDashboard from './pages/StudentDashboard';
 import StudentProfile from './pages/StudentProfile';
 import PlacementTrend from './pages/PlacementTrend';
-import SkillDemand from './pages/SkillDemand';
+import DomainListPage from './pages/DomainListPage';
+import DomainDetailsPage from './pages/DomainDetailsPage';
 import TPODashboard from './pages/TPODashboard';
 import ComingSoon from './components/ComingSoon';
 
@@ -84,7 +85,15 @@ function App() {
           path="/skill-demand"
           element={
             <ProtectedRoute requiredRole="Student">
-              <SkillDemand />
+              <DomainListPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/domain-skills/:domainName"
+          element={
+            <ProtectedRoute requiredRole="Student">
+              <DomainDetailsPage />
             </ProtectedRoute>
           }
         />
