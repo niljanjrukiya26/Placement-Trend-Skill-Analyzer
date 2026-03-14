@@ -45,11 +45,13 @@ def create_app(config_name='development'):
     from app.student.routes import student_bp
     from app.analytics.routes import analytics_bp
     from app.tpo.routes import tpo_bp
+    from app.skillgap.routes import skillgap_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(student_bp)
     app.register_blueprint(analytics_bp)
     app.register_blueprint(tpo_bp)
+    app.register_blueprint(skillgap_bp)
     
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])

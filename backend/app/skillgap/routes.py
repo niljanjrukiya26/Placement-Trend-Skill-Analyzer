@@ -13,6 +13,142 @@ from app.skillgap.services import generate_action_plan, calculate_readiness_leve
 skillgap_bp = Blueprint('skillgap', __name__, url_prefix='/api/skillgap')
 
 
+@skillgap_bp.route('/domain-analysis', methods=['GET'])
+@jwt_required()
+def get_domain_skill_gap_for_logged_in_student():
+    """Domain-wise skill gap analysis for the logged-in student.
+
+    Uses student's interested domains and technical skills to compare against
+    requirements from the domain_job_roles collection.
+
+    Response format:
+        [
+          {
+            "domain": "Software Development",
+            "job_roles": [
+              {
+                "job_role": "Backend Developer",
+                "required_skills": ["Python", "Docker", "Linux"],
+                "matched_skills": ["Python"],
+                "missing_skills": ["Docker", "Linux"],
+                "readiness_percentage": 33
+              }
+            ]
+          }
+        ]
+    """
+    try:
+        user_id = get_jwt_identity()
+        claims = get_jwt()
+
+        if claims.get('role') != 'Student':
+            return error_response('Only students can access this endpoint', 403)
+
+        db = current_app.mongo_db
+
+        # Find student by userid
+        student = db.students.find_one({'userid': user_id})
+        if not student:
+            return error_response('Student profile not found', 404)
+
+        student_branch = normalize_branch_name(student.get('branch', ''))
+
+        # Map existing profile fields to domain analysis semantics
+        interested_domains = student.get('interested_field') or []
+        if isinstance(interested_domains, str):
+            interested_domains = [interested_domains]
+        interested_domains = [
+            d.strip() for d in interested_domains
+            if isinstance(d, str) and d.strip()
+        ]
+
+        technical_skills_raw = student.get('skills', []) or []
+        if isinstance(technical_skills_raw, str):
+            technical_skills_raw = [technical_skills_raw]
+        technical_skills = {
+            s.strip().lower()
+            for s in technical_skills_raw
+            if isinstance(s, str) and s.strip()
+        }
+
+        if not interested_domains:
+            # No domains selected means nothing to analyze
+            return success_response([], 'No interested domains set for student', 200)
+
+        # Fetch domain_job_roles where domain is in student's interested domains
+        # and student's branch is eligible for the role
+        query = {
+            'domain': {'$in': interested_domains},
+            'eligible_branches': student_branch,
+        }
+
+        try:
+            domain_roles_cursor = db.domain_job_roles.find(query, {'_id': 0})
+            domain_roles = list(domain_roles_cursor)
+        except PyMongoError as e:
+            return error_response(f'Database error: {str(e)}', 500)
+
+        # Group results by domain with detailed job role analysis
+        domain_to_roles = {}
+
+        for role in domain_roles:
+            domain = role.get('domain')
+            if not domain:
+                continue
+
+            job_role_name = role.get('job_role')
+            required_raw = role.get('required_skills', []) or []
+
+            # Clean required_skills list while preserving original casing
+            required_skills = [
+                s.strip() for s in required_raw
+                if isinstance(s, str) and s.strip()
+            ]
+            required_lower = [s.lower() for s in required_skills]
+
+            # Determine matched and missing skills (case-insensitive match)
+            matched_skills = [
+                original for original, lower_val in zip(required_skills, required_lower)
+                if lower_val in technical_skills
+            ]
+            missing_skills = [
+                original for original, lower_val in zip(required_skills, required_lower)
+                if lower_val not in technical_skills
+            ]
+
+            total_required = len(required_skills)
+            if total_required > 0:
+                readiness_percentage = int(round((len(matched_skills) / total_required) * 100))
+            else:
+                readiness_percentage = 0
+
+            role_entry = {
+                'job_role': job_role_name,
+                'required_skills': required_skills,
+                'matched_skills': matched_skills,
+                'missing_skills': missing_skills,
+                'readiness_percentage': readiness_percentage,
+            }
+
+            domain_to_roles.setdefault(domain, []).append(role_entry)
+
+        # Build response array
+        response_data = [
+            {
+                'domain': domain,
+                'job_roles': roles,
+            }
+            for domain, roles in domain_to_roles.items()
+        ]
+
+        return success_response(response_data, 'Domain-wise skill gap analysis completed', 200)
+
+    except PyMongoError as e:
+        return error_response(f'Database error: {str(e)}', 500)
+    except Exception as e:
+        return error_response(f'Server error: {str(e)}', 500)
+
+
 @skillgap_bp.route('/analysis/<student_id>', methods=['GET'])
 @jwt_required()
 def get_skill_gap_analysis(student_id):

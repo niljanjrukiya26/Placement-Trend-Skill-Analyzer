@@ -50,8 +50,8 @@ export default function StudentProfile() {
 
   /**
    * FETCH BRANCH-FILTERED DROPDOWN OPTIONS
-   * Fetches all job roles and filters based on student's branch
-   * Extracts unique interested fields (job_role names) and technical skills (required_skills)
+   * Fetches domain_job_roles filtered by student's branch
+   * Extracts unique domains for interested fields and technical skills from required_skills
    */
   const fetchDropdownOptions = async () => {
     try {
@@ -60,31 +60,27 @@ export default function StudentProfile() {
         return;
       }
 
-      // Fetch all job roles from backend
-      const response = await analyticsService.getJobRoles();
-      const allJobRoles = response.data.data || [];
-
-      // Get normalized branch names for the student's branch
+      // Normalize student branch to canonical full name
       const normalizedStudentBranch = normalizeBranchName(student.branch);
 
-      // Filter job roles by canonical branch match.
-      const branchMatchedJobRoles = allJobRoles.filter((jobRole) => {
-        const eligibleBranches = jobRole.eligible_branches || [];
-        return eligibleBranches.some((eligibleBranch) => branchesMatch(eligibleBranch, normalizedStudentBranch));
+      // Fetch domain_job_roles filtered by student's branch
+      const response = await analyticsService.getDomainJobRoles({
+        branch: normalizedStudentBranch,
       });
+      const filteredDomainRoles = response.data.data || [];
 
-      // Extract unique interested fields (job_role names)
-      const uniqueInterestedFields = [
-        ...new Set(branchMatchedJobRoles.map((role) => role.job_role)),
+      // Extract unique domains for interested fields
+      const uniqueDomains = [
+        ...new Set(filteredDomainRoles.map((role) => role.domain).filter(Boolean)),
       ].sort();
 
-      // Extract unique technical skills (required_skills)
-      const allSkills = branchMatchedJobRoles.flatMap(
+      // Extract unique technical skills from required_skills arrays
+      const allSkills = filteredDomainRoles.flatMap(
         (role) => role.required_skills || []
       );
       const uniqueSkills = [...new Set(allSkills)].sort();
 
-      setInterestedOptions(uniqueInterestedFields);
+      setInterestedOptions(uniqueDomains);
       setSkillOptions(uniqueSkills);
     } catch (err) {
       console.error('Failed to load dropdown options:', err);

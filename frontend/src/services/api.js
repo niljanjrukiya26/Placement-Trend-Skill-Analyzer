@@ -121,4 +121,12 @@ export const tpoService = {
     apiClient.get('/tpo/branch-statistics'),
 };
 
+/**
+ * SKILL GAP APIs
+ */
+export const skillgapService = {
+  getDomainSkillGap: () =>
+    apiClient.get('/skillgap/domain-analysis'),
+};
+
 export default apiClient;

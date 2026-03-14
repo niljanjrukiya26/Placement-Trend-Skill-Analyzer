@@ -17,6 +17,7 @@ import DomainListPage from './pages/DomainListPage';
 import DomainDetailsPage from './pages/DomainDetailsPage';
 import TPODashboard from './pages/TPODashboard';
 import ComingSoon from './components/ComingSoon';
+import SkillGap from './pages/SkillGap';
 
 /**
  * Protected Route Component
@@ -101,10 +102,7 @@ function App() {
           path="/skill-gap"
           element={
             <ProtectedRoute requiredRole="Student">
-              <ComingSoon 
-                title="Skill Gap Analysis & Micro Action Plan" 
-                description="This module will help you identify skill gaps and create personalized micro-action plans to bridge them. Coming in Phase 2!"
-              />
+              <SkillGap />
             </ProtectedRoute>
           }
         />
