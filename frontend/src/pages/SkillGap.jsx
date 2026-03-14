@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Sidebar from '../components/Sidebar';
 import { skillgapService } from '../services/api';
-import { AlertCircle, Brain, Briefcase } from 'lucide-react';
+import { AlertCircle, Brain, Briefcase, Loader2 } from 'lucide-react';
 
 const getSkillGapLabel = (percentage) => {
   const value = Number.isFinite(percentage) ? percentage : 0;
@@ -66,6 +66,10 @@ export default function SkillGap() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState('');
+  const [microPlan, setMicroPlan] = useState('');
+  const [selectedRole, setSelectedRole] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -85,6 +89,128 @@ export default function SkillGap() {
 
     fetchData();
   }, []);
+
+  const isRoleSelectable = (role) => {
+    const readiness = Number.isFinite(role?.readiness_percentage)
+      ? Math.max(0, Math.min(100, role.readiness_percentage))
+      : 0;
+    const missingSkills = Array.isArray(role?.missing_skills) ? role.missing_skills : [];
+    return readiness < 100 || missingSkills.length > 0;
+  };
+
+  const selectableRoleOptions = (Array.isArray(data) ? data : []).flatMap((domainBlock) => {
+    const domain = domainBlock?.domain || 'Domain';
+    const roles = Array.isArray(domainBlock?.job_roles) ? domainBlock.job_roles : [];
+
+    return roles
+      .filter((role) => isRoleSelectable(role))
+      .map((role, index) => {
+        const roleName = role?.job_role || `Job Role ${index + 1}`;
+        const readiness = Number.isFinite(role?.readiness_percentage)
+          ? Math.max(0, Math.min(100, role.readiness_percentage))
+          : 0;
+        const missingSkills = Array.isArray(role?.missing_skills) ? role.missing_skills : [];
+        const matchedSkills = Array.isArray(role?.matched_skills) ? role.matched_skills : [];
+
+        return {
+          id: `${domain}::${roleName}`,
+          domain,
+          name: roleName,
+          readiness,
+          missing_skills: missingSkills,
+          matched_skills: matchedSkills,
+          label: `${domain} - ${roleName} (${readiness}% ready, ${missingSkills.length} missing)`
+        };
+      });
+  });
+
+  useEffect(() => {
+    if (!selectedRole) {
+      return;
+    }
+
+    const stillExists = selectableRoleOptions.some((option) => option.id === selectedRole.id);
+    if (!stillExists) {
+      setSelectedRole(null);
+    }
+  }, [selectedRole, selectableRoleOptions]);
+
+  const buildSelectedRolePayload = () => ({
+    domain: selectedRole?.domain,
+    job_role: selectedRole?.name,
+    missing_skills: Array.isArray(selectedRole?.missing_skills) ? selectedRole.missing_skills : [],
+    known_skills: Array.isArray(selectedRole?.matched_skills) ? selectedRole.matched_skills : [],
+  });
+
+  const handleGenerateMicroPlan = async () => {
+    try {
+      setPlanLoading(true);
+      setPlanError('');
+      setMicroPlan('');
+
+      if (!selectedRole) {
+        setPlanError('Please select a job role first');
+        return;
+      }
+
+      const response = await skillgapService.generateMicroPlanForRole(buildSelectedRolePayload());
+      const planText = response?.data?.plan;
+
+      if (response?.data?.success && planText) {
+        setMicroPlan(planText);
+      } else {
+        setPlanError('Failed to generate micro action plan');
+      }
+    } catch (err) {
+      setPlanError(err?.response?.data?.gemini_error || 'Failed to generate micro action plan');
+    } finally {
+      setPlanLoading(false);
+    }
+  };
+
+  const renderFormattedPlan = (planText) => {
+    const blocks = String(planText || '')
+      .split(/\n\s*\n/)
+      .map((block) => block.trim())
+      .filter(Boolean);
+
+    if (!blocks.length) {
+      return <p className="text-gray-700 leading-relaxed whitespace-pre-line">{planText}</p>;
+    }
+
+    return (
+      <div className="space-y-4">
+        {blocks.map((block, blockIndex) => {
+          const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
+
+          return (
+            <div
+              key={`plan-block-${blockIndex}`}
+              className="rounded-xl border border-indigo-100 bg-white/90 px-4 py-3 shadow-sm"
+            >
+              <div className="space-y-2">
+                {lines.map((line, lineIndex) => {
+                  const isBullet = /^[-*•]/.test(line) || /^\d+[.)]/.test(line);
+                  const cleanLine = line.replace(/^([-*•]|\d+[.)])\s*/, '');
+
+                  return isBullet ? (
+                    <p key={`plan-line-${blockIndex}-${lineIndex}`} className="text-[15px] text-slate-700 leading-7">
+                      <span className="mr-2 text-indigo-500">•</span>
+                      {cleanLine}
+                    </p>
+                  ) : (
+                    <p key={`plan-line-${blockIndex}-${lineIndex}`} className="text-[15px] text-slate-800 leading-7 font-medium">
+                      {cleanLine}
+                    </p>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   const renderSkillChip = (skill, matchedSkills, missingSkills) => {
     const isMatched = matchedSkills?.includes(skill);
@@ -216,11 +342,15 @@ export default function SkillGap() {
                             ? Math.max(0, Math.min(100, role.readiness_percentage))
                             : 0;
                           const skillGapLabel = getSkillGapLabel(readiness);
+                          const selectable = isRoleSelectable(role);
+                          const currentRoleName = role.job_role || 'Job Role';
 
                           return (
                             <div
                               key={`${domainBlock.domain}-${role.job_role || index}`}
-                              className="border border-gray-100 rounded-2xl p-4 bg-white/80 shadow-sm transform transition duration-200 ease-out hover:-translate-y-1 hover:shadow-lg flex flex-col"
+                              className={`border rounded-2xl p-4 bg-white/80 transform transition duration-200 ease-out flex flex-col ${
+                                selectable ? 'hover:-translate-y-1 hover:shadow-lg border-gray-100 shadow-sm' : 'opacity-70 border-gray-100 shadow-sm'
+                              }`}
                             >
                               <div className="flex items-start justify-between mb-2">
                                 <div className="flex items-center">
@@ -229,22 +359,28 @@ export default function SkillGap() {
                                   </div>
                                   <div>
                                     <h3 className="text-sm font-semibold text-gray-900">
-                                      {role.job_role || 'Job Role'}
+                                      {currentRoleName}
                                     </h3>
                                     <p className="text-[11px] text-gray-500 mt-0.5">
                                       {matchedCount} / {totalRequired || 0} Skills Matched
                                     </p>
                                   </div>
                                 </div>
-                                <span className="text-xs font-semibold text-indigo-700">
-                                  {readiness}% Ready
-                                </span>
+
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="text-xs font-semibold text-indigo-700">
+                                    {readiness}% Ready
+                                  </span>
+                                </div>
                               </div>
 
                               <div className="flex items-center justify-between mb-2">
                                 <p className="text-[11px] text-gray-500">
                                   Skill Gap: {skillGapLabel}
                                 </p>
+                                {!selectable && (
+                                  <p className="text-[11px] font-semibold text-emerald-700">Plan not needed</p>
+                                )}
                               </div>
 
                               {renderReadinessBar(readiness)}
@@ -271,6 +407,105 @@ export default function SkillGap() {
                   </div>
                 );
               })}
+
+              <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 md:p-8">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900">Your Personalized Micro Action Plan</h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      AI-generated preparation strategy based on your current missing skills.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="min-w-[320px]">
+                      <label htmlFor="micro-plan-role" className="block text-sm font-semibold text-gray-700 mb-2">
+                        Select Job Role
+                      </label>
+                      <select
+                        id="micro-plan-role"
+                        value={selectedRole?.id || ''}
+                        onChange={(event) => {
+                          const nextRole = selectableRoleOptions.find((option) => option.id === event.target.value) || null;
+                          setSelectedRole(nextRole);
+                          setPlanError('');
+                          setMicroPlan('');
+                        }}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="">Choose one job role</option>
+                        {selectableRoleOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleGenerateMicroPlan}
+                      disabled={planLoading || !selectedRole}
+                      title={!selectedRole ? 'Please select a job role first' : 'Generate micro action plan'}
+                      className="inline-flex items-center justify-center min-w-[260px] px-6 py-4 rounded-xl text-base font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 shadow-md"
+                    >
+                      {planLoading ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Generating personalized AI preparation roadmap...
+                        </>
+                      ) : (
+                        'Generate Micro Action Plan'
+                      )}
+                    </button>
+
+                    {microPlan && !planLoading && (
+                      <button
+                        type="button"
+                        onClick={handleGenerateMicroPlan}
+                        className="inline-flex items-center justify-center px-5 py-4 rounded-xl text-base font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-all duration-200"
+                      >
+                        Regenerate Plan
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {planError && (
+                  <div className="mt-5 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-red-700 font-medium">{planError}</p>
+                  </div>
+                )}
+
+                {!selectedRole && (
+                  <p className="mt-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 inline-block">
+                    Please select a job role first
+                  </p>
+                )}
+
+                {selectedRole && (
+                  <div className="mt-5 rounded-lg border border-blue-100 bg-blue-50/80 px-4 py-3 text-sm text-blue-900">
+                    Selected: <span className="font-semibold">{selectedRole.domain} - {selectedRole.name}</span>
+                  </div>
+                )}
+
+                {microPlan && (
+                  <div className="mt-6 rounded-2xl border border-indigo-200 bg-gradient-to-br from-white via-indigo-50 to-blue-50 shadow-lg p-5 md:p-6">
+                    <div className="flex flex-wrap items-center gap-2 mb-5">
+                      <span className="inline-flex items-center rounded-full bg-indigo-100 text-indigo-700 px-3 py-1 text-xs font-semibold">
+                        Domain: {selectedRole?.domain}
+                      </span>
+                      <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-3 py-1 text-xs font-semibold">
+                        Job Role: {selectedRole?.name}
+                      </span>
+                    </div>
+
+                    <div className="rounded-xl border border-indigo-100 bg-white/80 p-5">
+                      {renderFormattedPlan(microPlan)}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

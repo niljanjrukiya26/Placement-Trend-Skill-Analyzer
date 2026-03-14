@@ -127,6 +127,12 @@ export const tpoService = {
 export const skillgapService = {
   getDomainSkillGap: () =>
     apiClient.get('/skillgap/domain-analysis'),
+
+  generateMicroActionPlan: (data) =>
+    apiClient.post('/micro-action-plan', data),
+
+  generateMicroPlanForRole: (data) =>
+    apiClient.post('/generate-micro-plan', data),
 };
 
 export default apiClient;
