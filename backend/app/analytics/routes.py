@@ -9,6 +9,184 @@ from app.utils import error_response, success_response
 from app.branch_utils import normalize_branch_name
 
 analytics_bp = Blueprint('analytics', __name__, url_prefix='/api/analytics')
+job_role_insights_bp = Blueprint('job_role_insights', __name__, url_prefix='/api')
+
+
+def _build_placement_insights_pipeline(selected_role):
+    normalized_role = selected_role.lower()
+
+    return [
+        {
+            '$match': {
+                'placed_status': True,
+                '$expr': {
+                    '$eq': [
+                        {
+                            '$toLower': {
+                                '$trim': {
+                                    'input': {'$ifNull': ['$job_role', '']}
+                                }
+                            }
+                        },
+                        normalized_role
+                    ]
+                }
+            }
+        },
+        {
+            '$group': {
+                '_id': {
+                    'company_name': '$company_name',
+                    'branch': '$branch',
+                    'placement_year': '$placement_year'
+                },
+                'total_hired': {'$sum': 1}
+            }
+        },
+        {
+            '$project': {
+                '_id': 0,
+                'company_name': '$_id.company_name',
+                'branch': '$_id.branch',
+                'placement_year': '$_id.placement_year',
+                'total_hired': 1
+            }
+        },
+        {
+            '$lookup': {
+                'from': 'companies',
+                'let': {
+                    'placement_company_name': '$company_name',
+                    'placement_year': '$placement_year'
+                },
+                'pipeline': [
+                    {
+                        '$match': {
+                            '$expr': {
+                                '$and': [
+                                    {'$eq': ['$company_name', '$$placement_company_name']},
+                                    {'$eq': ['$year', '$$placement_year']}
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        '$project': {
+                            '_id': 0,
+                            'required_cgpa': 1,
+                            'min_pkg': {'$ifNull': ['$min_pkg', '$minimum_pkg']},
+                            'max_pkg': 1
+                        }
+                    },
+                    {'$limit': 1}
+                ],
+                'as': 'company_details'
+            }
+        },
+        {
+            '$unwind': {
+                'path': '$company_details',
+                'preserveNullAndEmptyArrays': True
+            }
+        },
+        {
+            '$project': {
+                'company_name': 1,
+                'branch': 1,
+                'placement_year': 1,
+                'total_hired': 1,
+                'required_cgpa': '$company_details.required_cgpa',
+                'min_pkg': '$company_details.min_pkg',
+                'max_pkg': '$company_details.max_pkg'
+            }
+        },
+        {
+            '$sort': {
+                'company_name': 1,
+                'branch': 1,
+                'placement_year': 1
+            }
+        },
+        {
+            '$group': {
+                '_id': {
+                    'company_name': '$company_name',
+                    'branch': '$branch'
+                },
+                'years': {
+                    '$push': {
+                        'year': '$placement_year',
+                        'total_hired': '$total_hired',
+                        'required_cgpa': '$required_cgpa',
+                        'min_pkg': '$min_pkg',
+                        'max_pkg': '$max_pkg'
+                    }
+                }
+            }
+        },
+        {
+            '$sort': {
+                '_id.company_name': 1,
+                '_id.branch': 1
+            }
+        },
+        {
+            '$group': {
+                '_id': '$_id.company_name',
+                'branches': {
+                    '$push': {
+                        'branch': '$_id.branch',
+                        'years': '$years'
+                    }
+                }
+            }
+        },
+        {
+            '$project': {
+                '_id': 0,
+                'company_name': '$_id',
+                'branches': 1
+            }
+        },
+        {
+            '$sort': {'company_name': 1}
+        }
+    ]
+
+
+def _get_placement_insights_response(job_role):
+    selected_role = (job_role or '').strip()
+    if not selected_role:
+        return error_response('job_role is required', 400)
+
+    db = current_app.mongo_db
+    pipeline = _build_placement_insights_pipeline(selected_role)
+    insights = list(db.placement_records.aggregate(pipeline))
+    return success_response(insights, 'Placement insights retrieved successfully', 200)
+
+
+@job_role_insights_bp.route('/placement-insights/<job_role>', methods=['GET'])
+@jwt_required()
+def get_placement_insights(job_role):
+    """Get company-wise nested placement insights for a selected job role."""
+    try:
+        return _get_placement_insights_response(job_role)
+    except PyMongoError as e:
+        return error_response(f'Database error: {str(e)}', 500)
+    except Exception as e:
+        return error_response(f'Server error: {str(e)}', 500)
+
+
+@job_role_insights_bp.route('/job-role-insights/<job_role>', methods=['GET'])
+@jwt_required()
+def get_job_role_insights(job_role):
+    """Backward-compatible alias for old insight URL."""
+    try:
+        return _get_placement_insights_response(job_role)
+    except PyMongoError as e:
+        return error_response(f'Database error: {str(e)}', 500)
+    except Exception as e:
+        return error_response(f'Server error: {str(e)}', 500)
 
 @analytics_bp.route('/placement/yearwise', methods=['GET'])
 @jwt_required()

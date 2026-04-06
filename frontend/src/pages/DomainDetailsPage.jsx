@@ -96,9 +96,11 @@ export default function DomainDetailsPage() {
           {jobRoles.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {jobRoles.map((role) => (
-                <div
+                <button
                   key={role.job_role_id || `${role.domain}-${role.job_role}`}
-                  className="bg-gradient-to-br from-white to-gray-50 rounded-lg border-2 border-gray-100 p-6 hover:border-indigo-300 hover:shadow-lg transition"
+                  type="button"
+                  onClick={() => navigate(`/placement-insights/${encodeURIComponent(role.job_role)}`)}
+                  className="text-left bg-gradient-to-br from-white to-gray-50 rounded-lg border-2 border-gray-100 p-6 hover:border-indigo-300 hover:shadow-lg transition"
                 >
                   <h3 className="text-lg font-bold text-gray-900 mb-4">{role.job_role}</h3>
 
@@ -119,7 +121,7 @@ export default function DomainDetailsPage() {
                   ) : (
                     <p className="text-gray-500 text-sm italic">No specific skills listed</p>
                   )}
-                </div>
+                </button>
               ))}
             </div>
           ) : (

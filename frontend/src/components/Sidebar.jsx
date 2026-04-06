@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { authUtils } from '../utils/auth';
+import { normalizeRole, ROLES } from '../utils/tpo/roles';
+import { tpoService } from '../services/api';
 import { 
   LogOut, 
   Menu, 
@@ -10,17 +12,81 @@ import {
   TrendingUp, 
   Code,
   Brain,
-  Zap
+  Zap,
+  Building2,
+  Briefcase,
+  GraduationCap,
+  ClipboardList,
+  Trophy,
+  UserCog
 } from 'lucide-react';
 
 export default function Sidebar() {
+  const DISPLAY_NAME_KEY = 'user_display_name';
+  const DISPLAY_NAME_EMAIL_KEY = 'user_display_name_email';
   const navigate = useNavigate();
   const location = useLocation();
   const userRole = authUtils.getUserRole();
+  const normalizedRole = normalizeRole(userRole);
   const userEmail = authUtils.getUserEmail();
+  const [displayName, setDisplayName] = useState(() => {
+    const fallback = userEmail?.split('@')[0] || 'User';
+    const cachedEmail = localStorage.getItem(DISPLAY_NAME_EMAIL_KEY);
+    const cachedName = localStorage.getItem(DISPLAY_NAME_KEY);
+    if (cachedEmail && cachedName && cachedEmail === userEmail) {
+      return cachedName;
+    }
+    return fallback;
+  });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const menuRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadDisplayName = async () => {
+      const fallback = userEmail?.split('@')[0] || 'User';
+
+      if (normalizedRole !== ROLES.MAIN_TPO && normalizedRole !== ROLES.BRANCH_TPO) {
+        localStorage.removeItem(DISPLAY_NAME_KEY);
+        localStorage.removeItem(DISPLAY_NAME_EMAIL_KEY);
+        if (active) setDisplayName(fallback);
+        return;
+      }
+
+      if (!userEmail) {
+        if (active) setDisplayName('User');
+        return;
+      }
+
+      const cachedEmail = localStorage.getItem(DISPLAY_NAME_EMAIL_KEY);
+      const cachedName = localStorage.getItem(DISPLAY_NAME_KEY);
+      if (cachedEmail && cachedName && cachedEmail === userEmail) {
+        if (active) setDisplayName(cachedName);
+      }
+
+      try {
+        const response = await tpoService.getProfile(userEmail);
+        const profileName = response?.data?.data?.name;
+        if (active) {
+          const finalName = profileName || fallback;
+          setDisplayName(finalName);
+          localStorage.setItem(DISPLAY_NAME_KEY, finalName);
+          localStorage.setItem(DISPLAY_NAME_EMAIL_KEY, userEmail);
+        }
+      } catch (error) {
+        if (active) {
+          setDisplayName(fallback);
+        }
+      }
+    };
+
+    loadDisplayName();
+    return () => {
+      active = false;
+    };
+  }, [DISPLAY_NAME_EMAIL_KEY, DISPLAY_NAME_KEY, normalizedRole, userEmail]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -59,14 +125,23 @@ export default function Sidebar() {
 
   const isActive = (path) => location.pathname === path;
 
-  const navItems = userRole === 'Student' ? [
+  const navItems = normalizedRole === 'Student' ? [
     { path: '/student-dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/placement-trend', label: 'Placement Trends', icon: TrendingUp },
     { path: '/skill-demand', label: 'Domain Wise Skills', icon: Code },
     { path: '/skill-gap', label: 'Skill Gap Analysis', icon: Brain },
     { path: '/placement-prediction', label: 'Placement Prediction', icon: Zap },
+  ] : normalizedRole === ROLES.MAIN_TPO ? [
+    { path: '/tpo/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/tpo/leaderboard', label: 'Leaderboard', icon: Trophy },
+    { path: '/tpo/manage-tpo', label: 'Manage TPO', icon: UserCog },
+    { path: '/tpo/manage-company', label: 'Manage Company', icon: Building2 },
+    { path: '/tpo/manage-job-role', label: 'Manage Job Role', icon: Briefcase },
   ] : [
-    { path: '/tpo-dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/tpo/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/tpo/leaderboard', label: 'Leaderboard', icon: Trophy },
+    { path: '/tpo/manage-students', label: 'Manage Students', icon: GraduationCap },
+    { path: '/tpo/manage-placement-records', label: 'Placement Records', icon: ClipboardList },
   ];
 
   return (
@@ -114,7 +189,7 @@ export default function Sidebar() {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 p-4 overflow-y-auto bg-gradient-to-b from-blue-50/30 to-indigo-50/30">
+          <nav className="scrollbar-thin flex-1 p-4 overflow-y-auto bg-gradient-to-b from-blue-50/30 to-indigo-50/30">
             <div className="space-y-2">
               {navItems.map((item, i) => {
                 const Icon = item.icon;
@@ -149,7 +224,7 @@ export default function Sidebar() {
             {showProfileMenu && (
               <div className="absolute bottom-full mb-2 left-4 right-4 bg-white border-2 border-gray-200 rounded-xl shadow-2xl overflow-hidden">
                 <div className="p-3 border-b-2 border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-                  <p className="text-sm font-bold text-gray-900 truncate">{userEmail?.split('@')[0] || 'User'}</p>
+                  <p className="text-sm font-bold text-gray-900 truncate">{displayName}</p>
                   <p className="text-xs text-gray-600 truncate">{userEmail}</p>
                   <p className="text-xs text-blue-600 font-semibold mt-1">{userRole}</p>
                 </div>
@@ -187,13 +262,13 @@ export default function Sidebar() {
                 <div 
                   className="w-11 h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-lg font-bold text-white shadow-lg ring-2 ring-blue-200"
                 >
-                  {getInitials(userEmail)}
+                  {getInitials(displayName)}
                 </div>
                 <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
               </div>
               
               <div className="flex-1 min-w-0 text-left">
-                <p className="text-sm font-bold text-gray-900 truncate">{userEmail?.split('@')[0] || 'User'}</p>
+                <p className="text-sm font-bold text-gray-900 truncate">{displayName}</p>
                 <p className="text-xs text-gray-600 flex items-center gap-1">
                   <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                   {userRole}

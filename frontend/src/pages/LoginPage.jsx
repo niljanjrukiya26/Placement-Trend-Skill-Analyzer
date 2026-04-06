@@ -8,10 +8,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/api';
 import { authUtils } from '../utils/auth';
+import { normalizeRole } from '../utils/tpo/roles';
 import { Lock, Mail, AlertCircle, CheckCircle, Eye, EyeOff, Zap, TrendingUp, BarChart3 } from 'lucide-react';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -26,20 +27,27 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await authService.login(email, password);
-      const { access_token, user_id, role, email: userEmail } = response.data.data;
+      const response = await authService.login(identifier, password);
+      const {
+        access_token,
+        user_id,
+        role,
+        email: userEmail,
+        branch,
+      } = response.data.data;
 
       // Store auth data
-      authUtils.setAuthData(access_token, user_id, role, userEmail);
+      authUtils.setAuthData(access_token, user_id, role, userEmail, branch);
 
       setSuccess('Login successful! Redirecting...');
 
       // Redirect based on role
       setTimeout(() => {
-        if (role === 'Student') {
+        const normalizedRole = normalizeRole(role);
+        if (normalizedRole === 'Student') {
           navigate('/student-dashboard');
-        } else if (role === 'TPO') {
-          navigate('/tpo-dashboard');
+        } else  {
+          navigate('/tpo/dashboard');
         }
       }, 1000);
     } catch (err) {
@@ -131,28 +139,28 @@ export default function LoginPage() {
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-2">
-              {/* Email Input */}
+              {/* Student ID / Email Input */}
               <div className="mb-6">
-                <label htmlFor="email" className="block text-gray-700 font-semibold mb-3 text-sm flex items-center">
+                <label htmlFor="email" className="text-gray-700 font-semibold mb-3 text-sm flex items-center">
                   {/* Icon color matches dashboard primary (blue) */}
                   <Mail className="w-4 h-4 mr-2 text-blue-600" />
-                  Email Address
+                  Student ID or Email
                 </label>
                 <input
                   id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your.email@college.edu"
+                  type="text"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  placeholder="22IT101 or your.email@college.edu"
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition font-medium"
                   required
-                  autoComplete="email"
+                  autoComplete="username"
                 />
               </div>
 
               {/* Password Input */}
               <div className="mb-6">
-                <label htmlFor="password" className="block text-gray-700 font-semibold mb-3 text-sm flex items-center">
+                <label htmlFor="password" className="text-gray-700 font-semibold mb-3 text-sm flex items-center">
                   {/* Icon color matches dashboard primary (blue) */}
                   <Lock className="w-4 h-4 mr-2 text-blue-600" />
                   Password

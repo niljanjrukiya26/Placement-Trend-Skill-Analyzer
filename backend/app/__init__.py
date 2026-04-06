@@ -30,7 +30,13 @@ def create_app(config_name='development'):
     jwt.init_app(app)
     
     # Enable CORS
-    CORS(app, resources={r"/api/*": {"origins": app.config['CORS_ORIGINS']}})
+    CORS(
+        app,
+        resources={
+            r"/api/*": {"origins": app.config['CORS_ORIGINS']},
+            r"/predict-placement/*": {"origins": app.config['CORS_ORIGINS']},
+        }
+    )
     
     # Initialize MongoDB
     global mongo_client, db
@@ -43,17 +49,24 @@ def create_app(config_name='development'):
     # Register blueprints
     from app.auth.routes import auth_bp
     from app.student.routes import student_bp
-    from app.analytics.routes import analytics_bp
+    from app.analytics.routes import analytics_bp, job_role_insights_bp
     from app.tpo.routes import tpo_bp
+    from app.company.routes import company_bp
+    from app.domain.routes import domain_bp
     from app.skillgap.routes import skillgap_bp
     from app.microplan.routes import microplan_bp
+    from app.routes.prediction_routes import prediction_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(student_bp)
     app.register_blueprint(analytics_bp)
+    app.register_blueprint(job_role_insights_bp)
     app.register_blueprint(tpo_bp)
+    app.register_blueprint(company_bp)
+    app.register_blueprint(domain_bp)
     app.register_blueprint(skillgap_bp)
     app.register_blueprint(microplan_bp)
+    app.register_blueprint(prediction_bp)
     
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])

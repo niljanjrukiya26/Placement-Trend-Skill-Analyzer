@@ -7,16 +7,20 @@ const TOKEN_KEY = 'access_token';
 const USER_ID_KEY = 'user_id';
 const USER_ROLE_KEY = 'user_role';
 const USER_EMAIL_KEY = 'user_email';
+const USER_BRANCH_KEY = 'user_branch';
 
 export const authUtils = {
   /**
    * Store authentication tokens and user info
    */
-  setAuthData: (token, userId, role, email) => {
+  setAuthData: (token, userId, role, email, branch = null) => {
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_ID_KEY, userId);
     localStorage.setItem(USER_ROLE_KEY, role);
     localStorage.setItem(USER_EMAIL_KEY, email);
+    if (branch) {
+      localStorage.setItem(USER_BRANCH_KEY, branch);
+    }
   },
 
   /**
@@ -40,6 +44,21 @@ export const authUtils = {
   getUserEmail: () => localStorage.getItem(USER_EMAIL_KEY),
 
   /**
+   * Get assigned branch (if available)
+   */
+  getUserBranch: () => localStorage.getItem(USER_BRANCH_KEY),
+
+  /**
+   * Get current user object from localStorage
+   */
+  getUser: () => ({
+    id: localStorage.getItem(USER_ID_KEY),
+    role: localStorage.getItem(USER_ROLE_KEY),
+    email: localStorage.getItem(USER_EMAIL_KEY),
+    branch: localStorage.getItem(USER_BRANCH_KEY),
+  }),
+
+  /**
    * Check if user is authenticated
    */
   isAuthenticated: () => {
@@ -54,6 +73,7 @@ export const authUtils = {
     localStorage.removeItem(USER_ID_KEY);
     localStorage.removeItem(USER_ROLE_KEY);
     localStorage.removeItem(USER_EMAIL_KEY);
+    localStorage.removeItem(USER_BRANCH_KEY);
   },
 
   /**

@@ -1,0 +1,53 @@
+export const mockTPOData = {
+  branches: ['CSE', 'IT', 'ECE', 'MECH', 'CIVIL'],
+  companies: [
+    { id: 'C1', name: 'InnovaTech', domain: 'Software', ctc: 14, openRoles: 3, hired: 42 },
+    { id: 'C2', name: 'CloudVista', domain: 'Cloud', ctc: 12, openRoles: 2, hired: 31 },
+    { id: 'C3', name: 'DataNexus', domain: 'Data', ctc: 11, openRoles: 4, hired: 28 },
+    { id: 'C4', name: 'Automa Works', domain: 'Manufacturing', ctc: 8, openRoles: 2, hired: 19 },
+    { id: 'C5', name: 'InfraGrid', domain: 'Civil Infra', ctc: 7, openRoles: 1, hired: 16 },
+  ],
+  jobRoles: [
+    { id: 'J1', role: 'Frontend Developer', company: 'InnovaTech', requiredSkills: ['React', 'Tailwind', 'JavaScript'] },
+    { id: 'J2', role: 'Backend Developer', company: 'CloudVista', requiredSkills: ['Python', 'Flask', 'SQL'] },
+    { id: 'J3', role: 'Data Analyst', company: 'DataNexus', requiredSkills: ['Python', 'Pandas', 'SQL'] },
+    { id: 'J4', role: 'Cloud Engineer', company: 'CloudVista', requiredSkills: ['AWS', 'Linux', 'Networking'] },
+  ],
+  tpos: [
+    { id: 'T1', name: 'Asha Nair', email: 'asha@college.edu', branch: 'CSE' },
+    { id: 'T2', name: 'Ravi Kumar', email: 'ravi@college.edu', branch: 'IT' },
+    { id: 'T3', name: 'Neha Iyer', email: 'neha@college.edu', branch: 'ECE' },
+  ],
+  students: [
+    { id: 'S001', name: 'Ananya Rao', branch: 'CSE', cgpa: 8.9, eligible: true, placed: true, skills: ['React', 'Node', 'SQL'] },
+    { id: 'S002', name: 'Karan Singh', branch: 'CSE', cgpa: 8.2, eligible: true, placed: false, skills: ['Java', 'Spring', 'MySQL'] },
+    { id: 'S003', name: 'Ishita Das', branch: 'IT', cgpa: 9.1, eligible: true, placed: true, skills: ['Python', 'Django', 'AWS'] },
+    { id: 'S004', name: 'Arjun Mehta', branch: 'ECE', cgpa: 7.8, eligible: true, placed: false, skills: ['C', 'Embedded', 'MATLAB'] },
+    { id: 'S005', name: 'Rhea Jain', branch: 'MECH', cgpa: 8.0, eligible: true, placed: false, skills: ['AutoCAD', 'SolidWorks'] },
+    { id: 'S006', name: 'Tara Pillai', branch: 'CSE', cgpa: 9.3, eligible: true, placed: true, skills: ['Python', 'ML', 'SQL'] },
+    { id: 'S007', name: 'Vikram Joshi', branch: 'IT', cgpa: 7.5, eligible: false, placed: false, skills: ['Linux', 'Networking'] },
+    { id: 'S008', name: 'Niharika Sen', branch: 'ECE', cgpa: 8.6, eligible: true, placed: true, skills: ['IoT', 'Python', 'C++'] },
+    { id: 'S009', name: 'Rohit Bansal', branch: 'CIVIL', cgpa: 8.1, eligible: true, placed: true, skills: ['AutoCAD', 'Project Mgmt'] },
+    { id: 'S010', name: 'Meera Shah', branch: 'CSE', cgpa: 8.7, eligible: true, placed: false, skills: ['React', 'TypeScript', 'Figma'] },
+  ],
+  placementRecords: [
+    { id: 'P1', studentId: 'S001', studentName: 'Ananya Rao', branch: 'CSE', company: 'InnovaTech', role: 'Frontend Developer', ctc: 14, year: 2026, status: 'Placed' },
+    { id: 'P2', studentId: 'S003', studentName: 'Ishita Das', branch: 'IT', company: 'CloudVista', role: 'Cloud Engineer', ctc: 12, year: 2026, status: 'Placed' },
+    { id: 'P3', studentId: 'S006', studentName: 'Tara Pillai', branch: 'CSE', company: 'DataNexus', role: 'Data Analyst', ctc: 11, year: 2025, status: 'Placed' },
+    { id: 'P4', studentId: 'S008', studentName: 'Niharika Sen', branch: 'ECE', company: 'InnovaTech', role: 'Software Engineer', ctc: 13, year: 2025, status: 'Placed' },
+    { id: 'P5', studentId: 'S009', studentName: 'Rohit Bansal', branch: 'CIVIL', company: 'InfraGrid', role: 'Site Analyst', ctc: 7, year: 2024, status: 'Placed' },
+  ],
+  branchPlacementYearwise: [
+    { year: 2023, CSE: 72, IT: 66, ECE: 58, MECH: 43, CIVIL: 37 },
+    { year: 2024, CSE: 79, IT: 71, ECE: 63, MECH: 49, CIVIL: 41 },
+    { year: 2025, CSE: 84, IT: 76, ECE: 67, MECH: 52, CIVIL: 46 },
+    { year: 2026, CSE: 88, IT: 81, ECE: 71, MECH: 57, CIVIL: 50 },
+  ],
+  topSkillsGapByBranch: [
+    { branch: 'CSE', React: 18, Python: 14, DSA: 20, SQL: 12 },
+    { branch: 'IT', React: 14, Python: 11, DSA: 17, SQL: 9 },
+    { branch: 'ECE', React: 9, Python: 13, DSA: 12, SQL: 8 },
+    { branch: 'MECH', React: 6, Python: 7, DSA: 8, SQL: 5 },
+    { branch: 'CIVIL', React: 4, Python: 6, DSA: 7, SQL: 4 },
+  ],
+};

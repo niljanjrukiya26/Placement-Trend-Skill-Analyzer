@@ -8,6 +8,7 @@ from pymongo.errors import PyMongoError
 from bson.objectid import ObjectId
 from app.utils import error_response, success_response, role_required
 from app.branch_utils import normalize_branch_name
+from app.score_utils import update_student_score
 
 student_bp = Blueprint('student', __name__, url_prefix='/api/student')
 
@@ -34,6 +35,10 @@ def get_student_profile():
         
         if not student:
             return error_response('Student profile not found', 404)
+
+        refreshed_score = update_student_score(db, student.get('student_id'))
+        if refreshed_score is not None:
+            student['overall_prediction_score'] = refreshed_score
         
         # Clean response - remove MongoDB ObjectId
         student_data = {
@@ -43,7 +48,9 @@ def get_student_profile():
             'cgpa': student.get('cgpa'),
             'backlogs': student.get('backlogs'),
             'interested_field': student.get('interested_field'),
-            'skills': student.get('skills', [])
+            'skills': student.get('skills', []),
+            'overall_prediction_score': student.get('overall_prediction_score', 0),
+            'last_updated': student.get('last_updated'),
         }
         
         return success_response(student_data, 'Student profile retrieved', 200)
@@ -80,17 +87,85 @@ def update_student_profile():
         if not update_data:
             return error_response('No fields to update', 400)
         
+        student = db.students.find_one({'userid': user_id}, {'_id': 0, 'student_id': 1})
+        if not student:
+            return error_response('Student profile not found', 404)
+
         # Update student record
         result = db.students.update_one(
             {'userid': user_id},
             {'$set': update_data}
         )
-        
-        if result.modified_count == 0:
-            return error_response('Student not found or no changes made', 404)
+
+        if result.matched_count == 0:
+            return error_response('Student profile not found', 404)
+
+        update_student_score(db, student.get('student_id'))
         
         return success_response({}, 'Profile updated successfully', 200)
     
+    except PyMongoError as e:
+        return error_response(f'Database error: {str(e)}', 500)
+    except Exception as e:
+        return error_response(f'Server error: {str(e)}', 500)
+
+
+@student_bp.route('/update-skills', methods=['PUT'])
+@jwt_required()
+def update_student_skills():
+    """Update only student skills and recalculate prediction score."""
+    try:
+        user_id = get_jwt_identity()
+        claims = get_jwt()
+
+        if claims.get('role') != 'Student':
+            return error_response('Only students can update skills', 403)
+
+        data = request.get_json() or {}
+        skills = data.get('skills')
+        if not isinstance(skills, list):
+            return error_response('skills must be an array', 400)
+
+        db = current_app.mongo_db
+        student = db.students.find_one({'userid': user_id}, {'_id': 0, 'student_id': 1})
+        if not student:
+            return error_response('Student profile not found', 404)
+
+        db.students.update_one({'userid': user_id}, {'$set': {'skills': skills}})
+        score = update_student_score(db, student.get('student_id'))
+
+        return success_response({'student_id': student.get('student_id'), 'overall_prediction_score': score}, 'Skills updated successfully', 200)
+    except PyMongoError as e:
+        return error_response(f'Database error: {str(e)}', 500)
+    except Exception as e:
+        return error_response(f'Server error: {str(e)}', 500)
+
+
+@student_bp.route('/update-domain', methods=['PUT'])
+@jwt_required()
+def update_student_domain():
+    """Update only interested_field and recalculate prediction score."""
+    try:
+        user_id = get_jwt_identity()
+        claims = get_jwt()
+
+        if claims.get('role') != 'Student':
+            return error_response('Only students can update interested_field', 403)
+
+        data = request.get_json() or {}
+        interested_field = data.get('interested_field')
+        if not isinstance(interested_field, list):
+            return error_response('interested_field must be an array', 400)
+
+        db = current_app.mongo_db
+        student = db.students.find_one({'userid': user_id}, {'_id': 0, 'student_id': 1})
+        if not student:
+            return error_response('Student profile not found', 404)
+
+        db.students.update_one({'userid': user_id}, {'$set': {'interested_field': interested_field}})
+        score = update_student_score(db, student.get('student_id'))
+
+        return success_response({'student_id': student.get('student_id'), 'overall_prediction_score': score}, 'Interested field updated successfully', 200)
     except PyMongoError as e:
         return error_response(f'Database error: {str(e)}', 500)
     except Exception as e:

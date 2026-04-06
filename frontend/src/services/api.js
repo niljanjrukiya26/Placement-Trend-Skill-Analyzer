@@ -46,8 +46,8 @@ apiClient.interceptors.response.use(
  * AUTHENTICATION APIs
  */
 export const authService = {
-  login: (email, password) =>
-    apiClient.post('/auth/login', { email, password }),
+  login: (identifier, password) =>
+    apiClient.post('/auth/login', { identifier, password }),
   
   logout: () =>
     apiClient.post('/auth/logout'),
@@ -100,25 +100,104 @@ export const analyticsService = {
 
   getPackageStatistics: () =>
     apiClient.get('/analytics/placement/package-stats'),
+
+  getPlacementInsights: (jobRole) =>
+    apiClient.get(`/placement-insights/${encodeURIComponent(jobRole)}`),
 };
 
 /**
  * TPO APIs
  */
 export const tpoService = {
-  getProfile: () =>
-    apiClient.get('/tpo/profile'),
+  getProfile: (email) =>
+    apiClient.get('/tpo/profile', { params: { email } }),
+
+  getDashboard: (email) =>
+    apiClient.get('/tpo/dashboard', { params: { email } }),
+
+  getYearStats: (email) =>
+    apiClient.get('/tpo/year-stats', { params: { email } }),
+
+  getRecentPlacements: () =>
+    apiClient.get('/tpo/recent-placements'),
+
+  getBranchStats: (email, year) =>
+    apiClient.get('/tpo/branch-stats', { params: { email, year } }),
   
   getBranchStudents: () =>
     apiClient.get('/tpo/students'),
+
+  getLeaderboard: (params = {}) =>
+    apiClient.get('/tpo/leaderboard', { params }),
+
+  addStudent: (payload) =>
+    apiClient.post('/tpo/students', payload),
+
+  updateStudent: (studentId, payload) =>
+    apiClient.put(`/tpo/students/${studentId}`, payload),
+
+  resetStudentPassword: (studentId) =>
+    apiClient.post(`/tpo/students/${studentId}/reset-password`),
+
+  deleteStudent: (studentId) =>
+    apiClient.delete(`/tpo/students/${studentId}`),
+
+  downloadStudentsTemplate: () =>
+    apiClient.get('/tpo/students/template/csv', { responseType: 'blob' }),
+
+  uploadStudentsCsv: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return apiClient.post('/tpo/students/upload/csv', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
   
   getPlacementRecords: (year = null) => {
     const params = year ? { year } : {};
     return apiClient.get('/tpo/placement-records', { params });
   },
+
+  addPlacementRecord: (payload) =>
+    apiClient.post('/tpo/placement-records', payload),
+
+  updatePlacementRecord: (id, payload) =>
+    apiClient.put(`/tpo/placement-records/${id}`, payload),
+
+  deletePlacementRecord: (id) =>
+    apiClient.delete(`/tpo/placement-records/${id}`),
+
+  uploadPlacementRecordsCsv: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return apiClient.post('/tpo/placement-records/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+
+  downloadPlacementTemplate: () =>
+    apiClient.get('/tpo/placement-records/template', { responseType: 'blob' }),
   
   getBranchStatistics: () =>
     apiClient.get('/tpo/branch-statistics'),
+
+  getAllTPOs: () =>
+    apiClient.get('/tpo/all'),
+
+  addTPO: (payload) =>
+    apiClient.post('/tpo/add', payload),
+
+  updateTPO: (userid, payload) =>
+    apiClient.put(`/tpo/update/${userid}`, payload),
+
+  deleteTPO: (userid) =>
+    apiClient.delete(`/tpo/delete/${userid}`),
 };
 
 /**
@@ -133,6 +212,70 @@ export const skillgapService = {
 
   generateMicroPlanForRole: (data) =>
     apiClient.post('/generate-micro-plan', data),
+};
+
+/**
+ * COMPANY APIs
+ */
+export const companyService = {
+  getDomains: () =>
+    apiClient.get('/domains'),
+
+  getNextCompanyId: () =>
+    apiClient.get('/companies/next-id'),
+
+  getCompanies: () =>
+    apiClient.get('/companies'),
+
+  addCompany: (payload) =>
+    apiClient.post('/companies', payload),
+
+  updateCompany: (id, payload) =>
+    apiClient.put(`/companies/${id}`, payload),
+
+  deleteCompany: (id) =>
+    apiClient.delete(`/companies/${id}`),
+
+  uploadCompaniesCsv: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('source', 'csv');
+
+    return apiClient.post('/companies', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+};
+
+/**
+ * DOMAIN JOB ROLE APIs
+ */
+export const domainService = {
+  getNextJobRoleId: () =>
+    apiClient.get('/domain-job-roles/next-id'),
+
+  getDomainOptions: () =>
+    apiClient.get('/domain-options'),
+
+  getSkillOptions: () =>
+    apiClient.get('/domain-job-roles/options/skills'),
+
+  getBranchOptions: () =>
+    apiClient.get('/domain-job-roles/options/branches'),
+
+  getDomainJobRoles: () =>
+    apiClient.get('/domain-job-roles'),
+
+  addDomainJobRole: (payload) =>
+    apiClient.post('/domain-job-roles', payload),
+
+  updateDomainJobRole: (id, payload) =>
+    apiClient.put(`/domain-job-roles/${id}`, payload),
+
+  deleteDomainJobRole: (id) =>
+    apiClient.delete(`/domain-job-roles/${id}`),
 };
 
 export default apiClient;

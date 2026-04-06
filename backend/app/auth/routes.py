@@ -17,7 +17,7 @@ def login():
     Login endpoint - Authenticate user and return JWT token
     Expected JSON:
     {
-        "email": "student@example.com",
+        "identifier": "student@example.com or 22IT101",
         "password": "password123"
     }
     Returns:
@@ -29,31 +29,46 @@ def login():
         data = request.get_json()
         
         # Validate input
-        if not data or not data.get('email') or not data.get('password'):
-            return error_response('Email and password are required', 400)
-        
-        email = data.get('email').strip().lower()
+        identifier = (data or {}).get('identifier') or (data or {}).get('email')
+        if not data or not identifier or not data.get('password'):
+            return error_response('Student ID/Email and password are required', 400)
+
+        raw_identifier = str(identifier).strip()
+        email_identifier = raw_identifier.lower()
+        user_identifier = raw_identifier.upper()
         password = data.get('password')
         
         # Query user from database
         db = current_app.mongo_db
-        user = db.users.find_one({'email': email})
+        user = db.users.find_one({
+            '$or': [
+                {'email': email_identifier},
+                {'userid': raw_identifier},
+                {'userid': user_identifier},
+            ]
+        })
         
         if not user:
-            return error_response('Invalid email or password', 401)
+            return error_response('Invalid student ID/email or password', 401)
         
         # For MVP: Simple password validation (In production: use hashed passwords)
         # This is a simplified check - in production use proper password hashing
         if user.get('password') != password:
-            return error_response('Invalid email or password', 401)
+            return error_response('Invalid student ID/email or password', 401)
         
         # Generate JWT token with user claims
         user_id = str(user['_id']) if '_id' in user else str(user.get('userid'))
         role = user.get('role', 'Student')
+
+        branch = None
+        if role in ['TPO', 'MAIN_TPO', 'BRANCH_TPO']:
+            tpo_profile = db.tpo.find_one({'userid': user.get('userid')}, {'_id': 0, 'branch': 1})
+            if tpo_profile:
+                branch = tpo_profile.get('branch')
         
         additional_claims = {
             'role': role,
-            'email': email
+            'email': user.get('email')
         }
         
         access_token = create_access_token(
@@ -65,7 +80,8 @@ def login():
             'access_token': access_token,
             'user_id': user_id,
             'role': role,
-            'email': email
+            'email': user.get('email'),
+            'branch': branch,
         }, 'Login successful', 200)
     
     except PyMongoError as e:

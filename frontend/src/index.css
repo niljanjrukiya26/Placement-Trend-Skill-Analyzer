@@ -6,6 +6,15 @@
   --primary: #2563eb;
   --secondary: #1e40af;
   --accent: #f59e0b;
+  --bg-tertiary: #f3f4f6;
+  --text-secondary: #6b7280;
+  --border-color: #e5e7eb;
+}
+
+.dark {
+  --bg-tertiary: #1f2937;
+  --text-secondary: #9ca3af;
+  --border-color: #4b5563;
 }
 
 body {
@@ -38,4 +47,97 @@ body {
 
 .text-success {
   @apply text-green-600 text-sm mt-1;
+}
+
+.placement-stats {
+  display: block;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.stat-row:last-child {
+  margin-bottom: 0;
+}
+
+.stat-label {
+  color: #334155;
+}
+
+.stat-value {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.stat-value-max {
+  color: #4f46e5;
+  font-weight: 700;
+}
+
+.recommended-inline-company-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.circular-progress-card {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  border-radius: 20px;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.06));
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.25), 0 12px 28px rgba(37, 99, 235, 0.28);
+}
+
+.circular-progress-svg {
+  transform: rotate(-90deg);
+}
+
+.circular-progress-track {
+  fill: none;
+  stroke: #e5e7eb;
+  opacity: 0.45;
+}
+
+.circular-progress-ring {
+  fill: none;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px rgba(79, 70, 229, 0.45)) drop-shadow(0 0 14px rgba(147, 51, 234, 0.35));
+  transition: stroke-dashoffset 0.25s linear;
+}
+
+.circular-progress-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.circular-progress-value {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  text-shadow: 0 4px 14px rgba(15, 23, 42, 0.45);
+}
+
+.circular-progress-label {
+  margin-top: 4px;
+  max-width: 120px;
+  font-size: 0.68rem;
+  line-height: 1.1;
+  font-weight: 600;
+  color: rgba(224, 231, 255, 0.95);
 }
