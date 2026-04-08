@@ -133,12 +133,14 @@ export default function Sidebar() {
     { path: '/placement-prediction', label: 'Placement Prediction', icon: Zap },
   ] : normalizedRole === ROLES.MAIN_TPO ? [
     { path: '/tpo/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/tpo/placements-dashboard', label: 'Placement Dashboard', icon: ClipboardList },
     { path: '/tpo/leaderboard', label: 'Leaderboard', icon: Trophy },
     { path: '/tpo/manage-tpo', label: 'Manage TPO', icon: UserCog },
     { path: '/tpo/manage-company', label: 'Manage Company', icon: Building2 },
     { path: '/tpo/manage-job-role', label: 'Manage Job Role', icon: Briefcase },
   ] : [
     { path: '/tpo/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/tpo/placements-dashboard', label: 'Placement Dashboard', icon: ClipboardList },
     { path: '/tpo/leaderboard', label: 'Leaderboard', icon: Trophy },
     { path: '/tpo/manage-students', label: 'Manage Students', icon: GraduationCap },
     { path: '/tpo/manage-placement-records', label: 'Placement Records', icon: ClipboardList },

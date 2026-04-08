@@ -6,7 +6,7 @@ from flask import Blueprint, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from pymongo.errors import PyMongoError
 from bson.objectid import ObjectId
-from app.utils import error_response, success_response
+from app.utils import error_response, success_response, find_student_by_identity
 from app.branch_utils import normalize_branch_name
 from app.skillgap.services import generate_action_plan, calculate_readiness_level
 
@@ -46,8 +46,8 @@ def get_domain_skill_gap_for_logged_in_student():
 
         db = current_app.mongo_db
 
-        # Find student by userid
-        student = db.students.find_one({'userid': user_id})
+        # Find student using JWT userid with legacy fallback link styles
+        student = find_student_by_identity(db, user_id)
         if not student:
             return error_response('Student profile not found', 404)
 
@@ -353,8 +353,8 @@ def get_logged_in_student_analysis():
         
         db = current_app.mongo_db
         
-        # Find student by userid
-        student = db.students.find_one({'userid': user_id})
+        # Find student using JWT userid with legacy fallback link styles
+        student = find_student_by_identity(db, user_id)
         
         if not student:
             return error_response('Student profile not found', 404)

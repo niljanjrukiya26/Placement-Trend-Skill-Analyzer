@@ -1078,6 +1078,7 @@ def get_placement_records():
             'company_name': 1,
             'package_lpa': 1,
             'domain': 1,
+            'job_role': 1,
         }
 
         raw_records = list(db.placement_records.find(query, projection))
@@ -1093,6 +1094,7 @@ def get_placement_records():
         for record in raw_records:
             company_name = str(record.get('company_name', '')).strip()
             domain = str(record.get('domain', '') or '').strip()
+            job_role = str(record.get('job_role', '') or '').strip()
 
             records.append({
                 'id': str(record.get('_id')),
@@ -1105,15 +1107,17 @@ def get_placement_records():
                 'company_name': company_name,
                 'package_lpa': record.get('package_lpa'),
                 'domain': domain,
+                'job_role': job_role,
             })
 
         if records:
             sample = records[0]
             current_app.logger.info(
-                'placement-records:first student_id=%s placed_status=%s domain=%s',
+                'placement-records:first student_id=%s placed_status=%s domain=%s job_role=%s',
                 sample.get('student_id'),
                 sample.get('placed_status'),
                 sample.get('domain'),
+                sample.get('job_role'),
             )
 
         return success_response(records, 'Placement records retrieved', 200)
@@ -1152,6 +1156,7 @@ def _sanitize_placement_record(data, forced_branch):
         'company_name': str(data.get('company_name', '')).strip(),
         'package_lpa': float(data.get('package_lpa', 0) or 0),
         'domain': str(data.get('domain', '')).strip(),
+        'job_role': str(data.get('job_role', '')).strip(),
     }
 
 
@@ -1187,6 +1192,7 @@ def add_placement_record():
             'company_name': created.get('company_name'),
             'package_lpa': created.get('package_lpa'),
             'domain': created.get('domain'),
+            'job_role': created.get('job_role'),
         }, 'Placement record added successfully', 201)
     except ValueError as exc:
         return error_response(str(exc), 400)
@@ -1234,6 +1240,7 @@ def update_placement_record(record_id):
             'company_name': updated.get('company_name'),
             'package_lpa': updated.get('package_lpa'),
             'domain': updated.get('domain'),
+            'job_role': updated.get('job_role'),
         }, 'Placement record updated successfully', 200)
     except ValueError as exc:
         return error_response(str(exc), 400)
@@ -1299,7 +1306,7 @@ def upload_placement_records_csv():
 
         expected_columns = {
             'student_id', 'branch', 'cgpa', 'backlogs', 'placement_year',
-            'placed_status', 'company_name', 'package_lpa', 'domain'
+            'placed_status', 'company_name', 'package_lpa', 'domain', 'job_role'
         }
 
         incoming_columns = set(dataframe.columns.astype(str).str.strip())
@@ -1319,6 +1326,7 @@ def upload_placement_records_csv():
                     'company_name': row.get('company_name'),
                     'package_lpa': row.get('package_lpa'),
                     'domain': row.get('domain'),
+                    'job_role': row.get('job_role'),
                 }
                 sanitized = _sanitize_placement_record(item, branch)
                 records_to_insert.append(sanitized)
@@ -1346,7 +1354,7 @@ def download_placement_records_template():
     """Return CSV template headers for placement records import."""
     headers = [
         'student_id', 'branch', 'cgpa', 'backlogs', 'placement_year',
-        'placed_status', 'company_name', 'package_lpa', 'domain'
+        'placed_status', 'company_name', 'package_lpa', 'domain', 'job_role'
     ]
     csv_content = ','.join(headers) + '\n'
 

@@ -6,7 +6,7 @@ from flask import Blueprint, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from pymongo.errors import PyMongoError
 from bson.objectid import ObjectId
-from app.utils import error_response, success_response, role_required
+from app.utils import error_response, success_response, role_required, find_student_by_identity
 from app.branch_utils import normalize_branch_name
 from app.score_utils import update_student_score
 
@@ -30,8 +30,8 @@ def get_student_profile():
         
         db = current_app.mongo_db
         
-        # Find student record by userid
-        student = db.students.find_one({'userid': user_id})
+        # Find student record using JWT userid with legacy fallback link styles
+        student = find_student_by_identity(db, user_id)
         
         if not student:
             return error_response('Student profile not found', 404)
@@ -87,13 +87,13 @@ def update_student_profile():
         if not update_data:
             return error_response('No fields to update', 400)
         
-        student = db.students.find_one({'userid': user_id}, {'_id': 0, 'student_id': 1})
+        student = find_student_by_identity(db, user_id, {'_id': 0, 'student_id': 1})
         if not student:
             return error_response('Student profile not found', 404)
 
         # Update student record
         result = db.students.update_one(
-            {'userid': user_id},
+            {'student_id': student.get('student_id')},
             {'$set': update_data}
         )
 
@@ -127,11 +127,11 @@ def update_student_skills():
             return error_response('skills must be an array', 400)
 
         db = current_app.mongo_db
-        student = db.students.find_one({'userid': user_id}, {'_id': 0, 'student_id': 1})
+        student = find_student_by_identity(db, user_id, {'_id': 0, 'student_id': 1})
         if not student:
             return error_response('Student profile not found', 404)
 
-        db.students.update_one({'userid': user_id}, {'$set': {'skills': skills}})
+        db.students.update_one({'student_id': student.get('student_id')}, {'$set': {'skills': skills}})
         score = update_student_score(db, student.get('student_id'))
 
         return success_response({'student_id': student.get('student_id'), 'overall_prediction_score': score}, 'Skills updated successfully', 200)
@@ -158,11 +158,11 @@ def update_student_domain():
             return error_response('interested_field must be an array', 400)
 
         db = current_app.mongo_db
-        student = db.students.find_one({'userid': user_id}, {'_id': 0, 'student_id': 1})
+        student = find_student_by_identity(db, user_id, {'_id': 0, 'student_id': 1})
         if not student:
             return error_response('Student profile not found', 404)
 
-        db.students.update_one({'userid': user_id}, {'$set': {'interested_field': interested_field}})
+        db.students.update_one({'student_id': student.get('student_id')}, {'$set': {'interested_field': interested_field}})
         score = update_student_score(db, student.get('student_id'))
 
         return success_response({'student_id': student.get('student_id'), 'overall_prediction_score': score}, 'Interested field updated successfully', 200)
@@ -183,7 +183,7 @@ def get_placement_status():
         db = current_app.mongo_db
         
         # Find student to get student_id
-        student = db.students.find_one({'userid': user_id})
+        student = find_student_by_identity(db, user_id)
         if not student:
             return error_response('Student not found', 404)
         

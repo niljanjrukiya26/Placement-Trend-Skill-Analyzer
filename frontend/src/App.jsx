@@ -26,6 +26,7 @@ import ManageDomain from './pages/tpo/ManageDomain';
 import ManagePlacementRecords from './pages/tpo/ManagePlacementRecords';
 import ManageStudents from './pages/tpo/ManageStudents';
 import Leaderboard from './pages/tpo/Leaderboard';
+import PlacementDashboard from './pages/tpo/PlacementDashboard';
 
 /**
  * Protected Route Component
@@ -191,6 +192,15 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={[ROLES.MAIN_TPO, ROLES.BRANCH_TPO]}>
               <Leaderboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/tpo/placements-dashboard"
+          element={
+            <ProtectedRoute allowedRoles={[ROLES.MAIN_TPO, ROLES.BRANCH_TPO]}>
+              <PlacementDashboard />
             </ProtectedRoute>
           }
         />

@@ -7,9 +7,26 @@ from flask_jwt_extended import create_access_token
 from pymongo.errors import PyMongoError
 from werkzeug.security import check_password_hash
 from app.utils import error_response, success_response
-from datetime import datetime
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
+
+
+def _verify_password(stored_password, incoming_password):
+    """Support both legacy plain-text and hashed passwords."""
+    if stored_password is None:
+        return False
+
+    stored_text = str(stored_password)
+    incoming_text = str(incoming_password)
+
+    if stored_text == incoming_text:
+        return True
+
+    try:
+        return check_password_hash(stored_text, incoming_text)
+    except ValueError:
+        # Not a valid hash string, treat as plain-text mismatch.
+        return False
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -51,13 +68,14 @@ def login():
         if not user:
             return error_response('Invalid student ID/email or password', 401)
         
-        # For MVP: Simple password validation (In production: use hashed passwords)
-        # This is a simplified check - in production use proper password hashing
-        if user.get('password') != password:
+        if not _verify_password(user.get('password'), password):
             return error_response('Invalid student ID/email or password', 401)
         
         # Generate JWT token with user claims
-        user_id = str(user['_id']) if '_id' in user else str(user.get('userid'))
+        user_id = str(user.get('userid') or user.get('_id'))
+        if not user_id or user_id == 'None':
+            return error_response('Invalid user record: userid missing', 500)
+
         role = user.get('role', 'Student')
 
         branch = None

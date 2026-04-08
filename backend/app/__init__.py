@@ -56,6 +56,7 @@ def create_app(config_name='development'):
     from app.skillgap.routes import skillgap_bp
     from app.microplan.routes import microplan_bp
     from app.routes.prediction_routes import prediction_bp
+    from app.placements.routes import placements_bp, job_roles_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(student_bp)
@@ -67,6 +68,8 @@ def create_app(config_name='development'):
     app.register_blueprint(skillgap_bp)
     app.register_blueprint(microplan_bp)
     app.register_blueprint(prediction_bp)
+    app.register_blueprint(placements_bp)
+    app.register_blueprint(job_roles_bp)
     
     # Health check endpoint
     @app.route('/api/health', methods=['GET'])

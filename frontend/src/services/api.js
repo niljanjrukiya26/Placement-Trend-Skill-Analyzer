@@ -36,6 +36,8 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('access_token');
       localStorage.removeItem('user_role');
       localStorage.removeItem('user_id');
+      localStorage.removeItem('user_email');
+      localStorage.removeItem('user_branch');
       window.location.href = '/login';
     }
     return Promise.reject(error);
@@ -198,6 +200,26 @@ export const tpoService = {
 
   deleteTPO: (userid) =>
     apiClient.delete(`/tpo/delete/${userid}`),
+};
+
+/**
+ * PLACEMENT DASHBOARD APIs
+ */
+export const placementService = {
+  getPlacements: (params = {}) =>
+    apiClient.get('/placements', { params }),
+
+  getJobRoles: (params = {}) =>
+    apiClient.get('/job-roles', { params }),
+
+  filterPlacements: (params = {}) =>
+    apiClient.get('/placements', { params }),
+
+  getPlacementStats: () =>
+    apiClient.get('/placements/stats'),
+
+  getBranchStats: () =>
+    apiClient.get('/placements/branch-stats'),
 };
 
 /**

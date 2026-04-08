@@ -10,7 +10,7 @@ from app.services.prediction_service import (
     predict_dynamic_rf_score,
     train_dynamic_rf_model,
 )
-from app.utils import error_response, success_response
+from app.utils import error_response, success_response, find_student_by_identity
 
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,11 @@ def predict_placement(userid):
     """Return domain-wise and overall placement prediction for a student."""
     try:
         db = current_app.mongo_db
-        student = db.students.find_one({'userid': userid}, {'_id': 0})
+
+        # Support both JWT userid linkage styles and direct student_id lookups.
+        student = find_student_by_identity(db, userid, {'_id': 0})
+        if not student:
+            student = db.students.find_one({'student_id': userid}, {'_id': 0})
 
         if not student:
             return error_response('Student not found', 404)

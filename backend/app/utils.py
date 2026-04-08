@@ -6,6 +6,7 @@ from flask import jsonify
 from functools import wraps
 from flask_jwt_extended import get_jwt_identity, get_jwt
 from datetime import datetime
+from bson.objectid import ObjectId
 
 def error_response(message, status_code=400, errors=None):
     """
@@ -85,3 +86,30 @@ def role_required(required_role):
                 return error_response('Unauthorized', 401)
         return wrapper
     return decorator
+
+
+def build_student_identity_query(db, identity):
+    """Build a query that supports both userid and linked users._id storage styles."""
+    safe_identity = str(identity or '').strip()
+    if not safe_identity:
+        return {'userid': None}
+
+    or_filters = [{'userid': safe_identity}]
+
+    if ObjectId.is_valid(safe_identity):
+        or_filters.append({'userid': ObjectId(safe_identity)})
+
+    user_doc = db.users.find_one({'userid': safe_identity}, {'_id': 1}) or {}
+    linked_user_object_id = user_doc.get('_id')
+    if linked_user_object_id is not None:
+        or_filters.append({'userid': linked_user_object_id})
+        or_filters.append({'userid': str(linked_user_object_id)})
+
+    if len(or_filters) == 1:
+        return or_filters[0]
+    return {'$or': or_filters}
+
+
+def find_student_by_identity(db, identity, projection=None):
+    """Find student document for the JWT identity across legacy and current link formats."""
+    return db.students.find_one(build_student_identity_query(db, identity), projection)
