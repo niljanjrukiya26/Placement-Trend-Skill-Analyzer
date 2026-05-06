@@ -12,20 +12,24 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
 
 def _verify_password(stored_password, incoming_password):
-    """Support both legacy plain-text and hashed passwords."""
+    """
+    Verify password: first try plaintext comparison, then bcrypt for existing hashes.
+    This supports both plaintext passwords (new system) and bcrypt hashes (legacy).
+    """
     if stored_password is None:
         return False
 
     stored_text = str(stored_password)
     incoming_text = str(incoming_password)
 
+    # First try direct plaintext comparison (new system)
     if stored_text == incoming_text:
         return True
 
+    # Then try bcrypt verification for existing hashed passwords
     try:
         return check_password_hash(stored_text, incoming_text)
-    except ValueError:
-        # Not a valid hash string, treat as plain-text mismatch.
+    except Exception:
         return False
 
 @auth_bp.route('/login', methods=['POST'])
@@ -57,18 +61,27 @@ def login():
         
         # Query user from database
         db = current_app.mongo_db
+        current_app.logger.info(f'Login attempt: identifier={raw_identifier}, email_identifier={email_identifier}, user_identifier={user_identifier}, password={password}')
         user = db.users.find_one({
             '$or': [
-                {'email': email_identifier},
+                {
+                    'email': {
+                        '$regex': f'^{email_identifier}$',
+                        '$options': 'i'
+                    }
+                },
                 {'userid': raw_identifier},
                 {'userid': user_identifier},
             ]
         })
         
         if not user:
+            current_app.logger.warning(f'User not found for identifier: {raw_identifier} (email: {email_identifier}, userid: {user_identifier})')
             return error_response('Invalid student ID/email or password', 401)
         
+        current_app.logger.info(f'User found: userid={user.get("userid")}, email={user.get("email")}, stored_password={user.get("password")}')
         if not _verify_password(user.get('password'), password):
+            current_app.logger.warning(f'Password mismatch for user: {user.get("userid")}. Stored: {user.get("password")}, Provided: {password}')
             return error_response('Invalid student ID/email or password', 401)
         
         # Generate JWT token with user claims
@@ -94,6 +107,7 @@ def login():
             additional_claims=additional_claims
         )
         
+        current_app.logger.info(f'Login successful for user: {user_id} (role: {role})')
         return success_response({
             'access_token': access_token,
             'user_id': user_id,
