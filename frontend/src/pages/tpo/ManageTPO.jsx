@@ -17,9 +17,17 @@ import {
   X,
 } from 'lucide-react';
 import { getCurrentUser, ROLES, normalizeRole } from '../../utils/tpo/roles';
-import { tpoService } from '../../services/api';
+import { domainService, tpoService } from '../../services/api';
 import { authUtils } from '../../utils/auth';
 import Sidebar from '../../components/Sidebar';
+
+const DEFAULT_BRANCH_OPTIONS = [
+  'Computer Engineering',
+  'Information Technology',
+  'Electrical Engineering',
+  'Civil Engineering',
+  'Mechanical Engineering',
+];
 
 function getInitials(nameOrEmail) {
   if (!nameOrEmail || typeof nameOrEmail !== 'string') return 'TP';
@@ -42,6 +50,7 @@ export default function ManageTPO() {
   const [message, setMessage] = useState('');
   const [rows, setRows] = useState([]);
   const [search, setSearch] = useState('');
+  const [branchOptions, setBranchOptions] = useState(DEFAULT_BRANCH_OPTIONS);
 
   const [form, setForm] = useState({
     name: '',
@@ -85,9 +94,24 @@ export default function ManageTPO() {
     }
   };
 
+  const fetchBranchOptions = async () => {
+    try {
+      const res = await domainService.getBranchOptions();
+      const options = res?.data?.data;
+      if (Array.isArray(options) && options.length > 0) {
+        setBranchOptions(options);
+      } else {
+        setBranchOptions(DEFAULT_BRANCH_OPTIONS);
+      }
+    } catch {
+      setBranchOptions(DEFAULT_BRANCH_OPTIONS);
+    }
+  };
+
   useEffect(() => {
     if (isMain) {
       fetchAll();
+      fetchBranchOptions();
     } else {
       setLoading(false);
     }
@@ -260,12 +284,19 @@ export default function ManageTPO() {
             </div>
 
             {form.role === 'BRANCH_TPO' && (
-              <input
+              <select
                 value={form.branch}
                 onChange={(event) => setForm((prev) => ({ ...prev, branch: event.target.value }))}
-                placeholder="Branch"
+                aria-label="Branch"
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2"
-              />
+              >
+                <option value="">Select branch</option>
+                {branchOptions.map((branch) => (
+                  <option key={branch} value={branch}>
+                    {branch}
+                  </option>
+                ))}
+              </select>
             )}
           </form>
         </section>
@@ -311,7 +342,7 @@ export default function ManageTPO() {
                                 userid: row.userid,
                                 name: row.name || '',
                                 branch: row.branch || '',
-                                role: row.role || 'BRANCH_TPO',
+                                role: normalizeRole(row.role) || 'BRANCH_TPO',
                               })
                             }
                             aria-label="Edit"
@@ -373,12 +404,22 @@ export default function ManageTPO() {
               </select>
 
               {editing.role === 'BRANCH_TPO' && (
-                <input
+                <select
                   value={editing.branch}
                   onChange={(event) => setEditing((prev) => ({ ...prev, branch: event.target.value }))}
-                  placeholder="Branch"
+                  aria-label="Edit branch"
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                />
+                >
+                  <option value="">Select branch</option>
+                  {editing.branch && !branchOptions.includes(editing.branch) && (
+                    <option value={editing.branch}>{editing.branch}</option>
+                  )}
+                  {branchOptions.map((branch) => (
+                    <option key={branch} value={branch}>
+                      {branch}
+                    </option>
+                  ))}
+                </select>
               )}
 
               <div className="flex justify-end gap-2 pt-1">

@@ -5,8 +5,6 @@ import {
   Briefcase,
   Building2,
   Edit2,
-  FileDown,
-  FileUp,
   GraduationCap,
   LayoutDashboard,
   LogOut,
@@ -61,6 +59,18 @@ function toRecordId(record) {
   return record?.id || record?._id;
 }
 
+function normalizeOptionsResponse(payload) {
+  if (Array.isArray(payload?.data?.data)) return payload.data.data;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload)) return payload;
+  return [];
+}
+
+function normalizeStudentId(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim().toUpperCase();
+}
+
 export default function ManagePlacementRecords() {
   const navigate = useNavigate();
   const user = getCurrentUser();
@@ -76,7 +86,20 @@ export default function ManagePlacementRecords() {
   const [rows, setRows] = useState([]);
   const [toast, setToast] = useState(null);
   const [editing, setEditing] = useState(null);
-  const [csvFile, setCsvFile] = useState(null);
+  const [yearOptions, setYearOptions] = useState([]);
+  const [companyOptions, setCompanyOptions] = useState([]);
+  const [domainOptions, setDomainOptions] = useState([]);
+  const [jobRoleOptions, setJobRoleOptions] = useState([]);
+  const [editCompanyOptions, setEditCompanyOptions] = useState([]);
+  const [editDomainOptions, setEditDomainOptions] = useState([]);
+  const [editJobRoleOptions, setEditJobRoleOptions] = useState([]);
+  const [tableFilters, setTableFilters] = useState({
+    year: '',
+    status: '',
+    company: '',
+    domain: '',
+    jobRole: '',
+  });
   const [form, setForm] = useState({
     student_id: '',
     cgpa: '',
@@ -98,6 +121,154 @@ export default function ManagePlacementRecords() {
     showToast.timerId = window.setTimeout(() => setToast(null), 2800);
   };
 
+  const loadYearOptions = async () => {
+    try {
+      const response = await tpoService.getPlacementRecordYearOptions();
+      const years = normalizeOptionsResponse(response?.data)
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value))
+        .sort((left, right) => right - left);
+
+      const currentYear = Number(new Date().getFullYear());
+      const mergedYears = years.includes(currentYear) ? years : [currentYear, ...years];
+      setYearOptions(Array.from(new Set(mergedYears)));
+    } catch (error) {
+      setYearOptions([Number(new Date().getFullYear())]);
+      showToast('error', error?.response?.data?.message || 'Failed to load placement years.');
+    }
+  };
+
+  const loadCompanyOptions = async (year) => {
+    if (!year) {
+      setCompanyOptions([]);
+      return;
+    }
+
+    try {
+      const response = await tpoService.getPlacementRecordCompanyOptions(year);
+      setCompanyOptions(normalizeOptionsResponse(response?.data));
+    } catch (error) {
+      setCompanyOptions([]);
+      showToast('error', error?.response?.data?.message || 'Failed to load company options.');
+    }
+  };
+
+  const loadDomainOptions = async (year, companyName) => {
+    if (!year || !companyName) {
+      setDomainOptions([]);
+      return;
+    }
+
+    try {
+      const response = await tpoService.getPlacementRecordDomainOptions(year, companyName);
+      setDomainOptions(normalizeOptionsResponse(response?.data));
+    } catch (error) {
+      setDomainOptions([]);
+      showToast('error', error?.response?.data?.message || 'Failed to load domain options.');
+    }
+  };
+
+  const loadJobRoleOptions = async (domain) => {
+    if (!domain) {
+      setJobRoleOptions([]);
+      return;
+    }
+
+    try {
+      const response = await tpoService.getPlacementRecordJobRoleOptions(domain);
+      setJobRoleOptions(normalizeOptionsResponse(response?.data));
+    } catch (error) {
+      setJobRoleOptions([]);
+      showToast('error', error?.response?.data?.message || 'Failed to load job role options.');
+    }
+  };
+
+  const loadEditCompanyOptions = async (year) => {
+    if (!year) {
+      setEditCompanyOptions([]);
+      return;
+    }
+
+    try {
+      const response = await tpoService.getPlacementRecordCompanyOptions(year);
+      setEditCompanyOptions(normalizeOptionsResponse(response?.data));
+    } catch (error) {
+      setEditCompanyOptions([]);
+      showToast('error', error?.response?.data?.message || 'Failed to load company options.');
+    }
+  };
+
+  const loadEditDomainOptions = async (year, companyName) => {
+    if (!year || !companyName) {
+      setEditDomainOptions([]);
+      return;
+    }
+
+    try {
+      const response = await tpoService.getPlacementRecordDomainOptions(year, companyName);
+      setEditDomainOptions(normalizeOptionsResponse(response?.data));
+    } catch (error) {
+      setEditDomainOptions([]);
+      showToast('error', error?.response?.data?.message || 'Failed to load domain options.');
+    }
+  };
+
+  const loadEditJobRoleOptions = async (domain) => {
+    if (!domain) {
+      setEditJobRoleOptions([]);
+      return;
+    }
+
+    try {
+      const response = await tpoService.getPlacementRecordJobRoleOptions(domain);
+      setEditJobRoleOptions(normalizeOptionsResponse(response?.data));
+    } catch (error) {
+      setEditJobRoleOptions([]);
+      showToast('error', error?.response?.data?.message || 'Failed to load job role options.');
+    }
+  };
+
+  const validateEditForm = () => {
+    const requiredFields = ['student_id', 'cgpa', 'backlogs', 'placement_year', 'placed_status'];
+
+    for (const key of requiredFields) {
+      if (!String(editing?.[key] ?? '').trim()) {
+        showToast('error', 'Please fill all required fields in edit form.');
+        return false;
+      }
+    }
+
+    if (editing.placed_status === 'true') {
+      const placedRequiredFields = ['company_name', 'domain', 'job_role', 'package_lpa'];
+      for (const key of placedRequiredFields) {
+        if (!String(editing?.[key] ?? '').trim()) {
+          showToast('error', 'Please fill all required fields in edit form.');
+          return false;
+        }
+      }
+
+      if (!editCompanyOptions.includes(editing.company_name)) {
+        showToast('error', 'Please select a valid company for the selected year in edit form.');
+        return false;
+      }
+
+      if (!editDomainOptions.includes(editing.domain)) {
+        showToast('error', 'Please select a valid domain for the selected company in edit form.');
+        return false;
+      }
+
+      if (!editJobRoleOptions.includes(editing.job_role)) {
+        showToast('error', 'Please select a valid job role for the selected domain in edit form.');
+        return false;
+      }
+    } else if (editing.company_name || editing.domain || editing.job_role || String(editing.package_lpa || '').trim()) {
+      showToast('error', 'Select Placed status before filling company details in edit form.');
+      return false;
+    }
+
+    return true;
+  };
+
   const fetchRecords = async () => {
     try {
       setLoading(true);
@@ -114,8 +285,54 @@ export default function ManagePlacementRecords() {
   };
 
   useEffect(() => {
+    loadYearOptions();
     fetchRecords();
   }, []);
+
+  useEffect(() => {
+    if (!yearOptions.length) return;
+
+    setForm((prev) => {
+      const currentYear = Number(prev.placement_year);
+      const nextYear = yearOptions.includes(currentYear) ? currentYear : yearOptions[0];
+      if (String(nextYear) === String(prev.placement_year)) return prev;
+
+      return {
+        ...prev,
+        placement_year: String(nextYear),
+        company_name: '',
+        domain: '',
+        job_role: '',
+      };
+    });
+  }, [yearOptions]);
+
+  useEffect(() => {
+    loadCompanyOptions(form.placement_year);
+  }, [form.placement_year]);
+
+  useEffect(() => {
+    loadDomainOptions(form.placement_year, form.company_name);
+  }, [form.placement_year, form.company_name]);
+
+  useEffect(() => {
+    loadJobRoleOptions(form.domain);
+  }, [form.domain]);
+
+  useEffect(() => {
+    if (!editing) return;
+    loadEditCompanyOptions(editing.placement_year);
+  }, [editing?.placement_year]);
+
+  useEffect(() => {
+    if (!editing) return;
+    loadEditDomainOptions(editing.placement_year, editing.company_name);
+  }, [editing?.placement_year, editing?.company_name]);
+
+  useEffect(() => {
+    if (!editing) return;
+    loadEditJobRoleOptions(editing.domain);
+  }, [editing?.domain]);
 
   const handleLogout = () => {
     authUtils.clearAuthData();
@@ -131,8 +348,31 @@ export default function ManagePlacementRecords() {
       }
     }
 
-    if (form.placed_status === 'true' && (!form.company_name.trim() || !String(form.package_lpa || '').trim())) {
-      showToast('error', 'Company and package are required for placed students.');
+    if (form.placed_status === 'true') {
+      const placedRequiredFields = ['company_name', 'domain', 'job_role', 'package_lpa'];
+      for (const key of placedRequiredFields) {
+        if (!String(form[key] || '').trim()) {
+          showToast('error', 'Please fill all required fields.');
+          return false;
+        }
+      }
+
+      if (!companyOptions.includes(form.company_name)) {
+        showToast('error', 'Please select a valid company for the selected year.');
+        return false;
+      }
+
+      if (!domainOptions.includes(form.domain)) {
+        showToast('error', 'Please select a valid domain for the selected company.');
+        return false;
+      }
+
+      if (!jobRoleOptions.includes(form.job_role)) {
+        showToast('error', 'Please select a valid job role for the selected domain.');
+        return false;
+      }
+    } else if (form.company_name || form.domain || form.job_role || String(form.package_lpa || '').trim()) {
+      showToast('error', 'Select Placed status before filling company details.');
       return false;
     }
 
@@ -142,6 +382,18 @@ export default function ManagePlacementRecords() {
   const handleAddRecord = async (event) => {
     event.preventDefault();
     if (!validateManualForm()) return;
+
+    const duplicateExists = rows.some((row) => {
+      return (
+        normalizeStudentId(row.student_id) === normalizeStudentId(form.student_id) &&
+        Number(row.placement_year) === Number(form.placement_year)
+      );
+    });
+
+    if (duplicateExists) {
+      showToast('error', 'Placement record for this student exists.');
+      return;
+    }
 
     try {
       setSaving(true);
@@ -178,40 +430,110 @@ export default function ManagePlacementRecords() {
     }
   };
 
-  const handleDownloadTemplate = async () => {
-    try {
-      const response = await tpoService.downloadPlacementTemplate();
-      const blob = new Blob([response.data], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'placement_records_template.csv';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      showToast('error', error?.response?.data?.message || 'Failed to download template.');
-    }
+  const handlePlacementYearChange = (event) => {
+    const nextYear = event.target.value;
+    setForm((prev) => ({
+      ...prev,
+      placement_year: nextYear,
+      company_name: '',
+      domain: '',
+      job_role: '',
+    }));
+    setCompanyOptions([]);
+    setDomainOptions([]);
+    setJobRoleOptions([]);
   };
 
-  const handleUploadCsv = async () => {
-    if (!csvFile) {
-      showToast('error', 'Please choose a CSV file first.');
-      return;
-    }
+  const handleCompanyNameChange = (event) => {
+    const nextCompany = event.target.value;
+    setForm((prev) => ({
+      ...prev,
+      company_name: nextCompany,
+      domain: '',
+      job_role: '',
+    }));
+    setDomainOptions([]);
+    setJobRoleOptions([]);
+  };
 
-    try {
-      setSaving(true);
-      await tpoService.uploadPlacementRecordsCsv(csvFile);
-      setCsvFile(null);
-      await fetchRecords();
-      showToast('success', 'CSV uploaded successfully.');
-    } catch (error) {
-      showToast('error', error?.response?.data?.message || 'Failed to upload CSV.');
-    } finally {
-      setSaving(false);
-    }
+  const handleDomainChange = (event) => {
+    const nextDomain = event.target.value;
+    setForm((prev) => ({
+      ...prev,
+      domain: nextDomain,
+      job_role: '',
+    }));
+    setJobRoleOptions([]);
+  };
+
+  const handlePlacedStatusChange = (event) => {
+    const nextStatus = event.target.value;
+    setForm((prev) => ({
+      ...prev,
+      placed_status: nextStatus,
+      ...(nextStatus === 'false'
+        ? {
+            company_name: '',
+            package_lpa: '',
+            domain: '',
+            job_role: '',
+          }
+        : {}),
+    }));
+
+  };
+
+  const handleEditPlacementYearChange = (event) => {
+    const nextYear = event.target.value;
+    setEditing((prev) => ({
+      ...prev,
+      placement_year: nextYear,
+      company_name: '',
+      domain: '',
+      job_role: '',
+    }));
+    setEditCompanyOptions([]);
+    setEditDomainOptions([]);
+    setEditJobRoleOptions([]);
+  };
+
+  const handleEditCompanyNameChange = (event) => {
+    const nextCompany = event.target.value;
+    setEditing((prev) => ({
+      ...prev,
+      company_name: nextCompany,
+      domain: '',
+      job_role: '',
+    }));
+    setEditDomainOptions([]);
+    setEditJobRoleOptions([]);
+  };
+
+  const handleEditDomainChange = (event) => {
+    const nextDomain = event.target.value;
+    setEditing((prev) => ({
+      ...prev,
+      domain: nextDomain,
+      job_role: '',
+    }));
+    setEditJobRoleOptions([]);
+  };
+
+  const handleEditPlacedStatusChange = (event) => {
+    const nextStatus = event.target.value;
+    setEditing((prev) => ({
+      ...prev,
+      placed_status: nextStatus,
+      ...(nextStatus === 'false'
+        ? {
+            company_name: '',
+            package_lpa: '',
+            domain: '',
+            job_role: '',
+          }
+        : {}),
+    }));
+
   };
 
   const startEdit = (row) => {
@@ -232,6 +554,8 @@ export default function ManagePlacementRecords() {
   const handleUpdateRecord = async (event) => {
     event.preventDefault();
     if (!editing?.id) return;
+
+    if (!validateEditForm()) return;
 
     try {
       setSaving(true);
@@ -270,18 +594,169 @@ export default function ManagePlacementRecords() {
     }
   };
 
+  const tableFilterOptions = useMemo(() => {
+    const selected = {
+      year: String(tableFilters.year || '').trim(),
+      status: String(tableFilters.status || '').trim(),
+      company: String(tableFilters.company || '').trim().toLowerCase(),
+      domain: String(tableFilters.domain || '').trim().toLowerCase(),
+      jobRole: String(tableFilters.jobRole || '').trim().toLowerCase(),
+    };
+
+    const getRowStatus = (row) => (row.placed_status ? 'Placed' : 'Not Placed');
+
+    const matchesOtherFilters = (row, targetField) => {
+      const rowYear = String(row.placement_year || '').trim();
+      const rowStatus = getRowStatus(row);
+      const rowCompany = String(row.company_name || '').trim().toLowerCase();
+      const rowDomain = String(row.domain || '').trim().toLowerCase();
+      const rowJobRole = String(row.job_role || '').trim().toLowerCase();
+
+      if (targetField !== 'year' && selected.year && rowYear !== selected.year) return false;
+      if (targetField !== 'status' && selected.status && rowStatus !== selected.status) return false;
+      if (targetField !== 'company' && selected.company && rowCompany !== selected.company) return false;
+      if (targetField !== 'domain' && selected.domain && rowDomain !== selected.domain) return false;
+      if (targetField !== 'jobRole' && selected.jobRole && rowJobRole !== selected.jobRole) return false;
+
+      return true;
+    };
+
+    const years = [
+      ...new Set(
+        rows
+          .filter((row) => matchesOtherFilters(row, 'year'))
+          .map((row) => String(row.placement_year || '').trim())
+          .filter(Boolean)
+      ),
+    ].sort((a, b) => Number(b) - Number(a));
+
+    const statuses = [
+      ...new Set(
+        rows
+          .filter((row) => matchesOtherFilters(row, 'status'))
+          .map((row) => getRowStatus(row))
+          .filter(Boolean)
+      ),
+    ];
+
+    const companies = [
+      ...new Set(
+        rows
+          .filter((row) => matchesOtherFilters(row, 'company'))
+          .map((row) => String(row.company_name || '').trim())
+          .filter(Boolean)
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+
+    const domains = [
+      ...new Set(
+        rows
+          .filter((row) => matchesOtherFilters(row, 'domain'))
+          .map((row) => String(row.domain || '').trim())
+          .filter(Boolean)
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+
+    const jobRoles = [
+      ...new Set(
+        rows
+          .filter((row) => matchesOtherFilters(row, 'jobRole'))
+          .map((row) => String(row.job_role || '').trim())
+          .filter(Boolean)
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+
+    return {
+      years,
+      statuses,
+      companies,
+      domains,
+      jobRoles,
+    };
+  }, [rows, tableFilters.year, tableFilters.status, tableFilters.company, tableFilters.domain, tableFilters.jobRole]);
+
+  useEffect(() => {
+    if (tableFilters.year && !tableFilterOptions.years.includes(tableFilters.year)) {
+      setTableFilters((prev) => ({ ...prev, year: '' }));
+    }
+
+    if (tableFilters.status && !tableFilterOptions.statuses.includes(tableFilters.status)) {
+      setTableFilters((prev) => ({ ...prev, status: '' }));
+    }
+
+    if (tableFilters.company && !tableFilterOptions.companies.includes(tableFilters.company)) {
+      setTableFilters((prev) => ({ ...prev, company: '' }));
+    }
+
+    if (tableFilters.domain && !tableFilterOptions.domains.includes(tableFilters.domain)) {
+      setTableFilters((prev) => ({ ...prev, domain: '' }));
+    }
+
+    if (tableFilters.jobRole && !tableFilterOptions.jobRoles.includes(tableFilters.jobRole)) {
+      setTableFilters((prev) => ({ ...prev, jobRole: '' }));
+    }
+  }, [
+    tableFilters.year,
+    tableFilters.status,
+    tableFilters.company,
+    tableFilters.domain,
+    tableFilters.jobRole,
+    tableFilterOptions.years,
+    tableFilterOptions.statuses,
+    tableFilterOptions.companies,
+    tableFilterOptions.domains,
+    tableFilterOptions.jobRoles,
+  ]);
+
+  const handleTableFilterChange = (field, value) => {
+    setTableFilters((prev) => ({ ...prev, [field]: value }));
+    setCurrentPage(1);
+  };
+
+  const resetTableFilters = () => {
+    setTableFilters({
+      year: '',
+      status: '',
+      company: '',
+      domain: '',
+      jobRole: '',
+    });
+    setCurrentPage(1);
+  };
+
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const filtered = !query
-      ? [...rows]
-      : rows.filter((row) =>
-          String(row.student_id || '').toLowerCase().includes(query) ||
-          String(row.company_name || '').toLowerCase().includes(query) ||
-          String(row.job_role || '').toLowerCase().includes(query)
-        );
+    const filtered = rows.filter((row) => {
+      if (tableFilters.year && String(row.placement_year || '') !== tableFilters.year) return false;
+
+      if (tableFilters.status) {
+        const rowStatus = row.placed_status ? 'Placed' : 'Not Placed';
+        if (rowStatus !== tableFilters.status) return false;
+      }
+
+      if (tableFilters.company && String(row.company_name || '').trim().toLowerCase() !== tableFilters.company.toLowerCase()) {
+        return false;
+      }
+
+      if (tableFilters.domain && String(row.domain || '').trim().toLowerCase() !== tableFilters.domain.toLowerCase()) {
+        return false;
+      }
+
+      if (tableFilters.jobRole && String(row.job_role || '').trim().toLowerCase() !== tableFilters.jobRole.toLowerCase()) {
+        return false;
+      }
+
+      if (!query) return true;
+
+      return (
+        String(row.student_id || '').toLowerCase().includes(query) ||
+        String(row.company_name || '').toLowerCase().includes(query) ||
+        String(row.job_role || '').toLowerCase().includes(query)
+      );
+    });
 
     return filtered.sort((a, b) => Number(b.placement_year || 0) - Number(a.placement_year || 0));
-  }, [rows, search]);
+  }, [rows, search, tableFilters]);
 
   const itemsPerPage = 10;
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / itemsPerPage));
@@ -300,7 +775,7 @@ export default function ManagePlacementRecords() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search]);
+  }, [search, tableFilters]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -397,7 +872,7 @@ export default function ManagePlacementRecords() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       {toast && (
-        <div className="fixed right-4 top-4 z-[100]">
+        <div className="fixed right-4 top-4 z-[10050]">
           <div className={`flex items-start gap-2 rounded-xl px-4 py-3 text-sm font-medium shadow-lg ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
             <AlertCircle className="mt-0.5 h-4 w-4" />
             <span>{toast.message}</span>
@@ -448,19 +923,24 @@ export default function ManagePlacementRecords() {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Placement Year</label>
-              <input
-                type="number"
+              <select
                 value={form.placement_year}
-                onChange={(event) => setForm((prev) => ({ ...prev, placement_year: event.target.value }))}
+                onChange={handlePlacementYearChange}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                placeholder="2026"
-              />
+              >
+                <option value="">Select Year</option>
+                {yearOptions.map((year) => (
+                  <option key={year} value={String(year)}>
+                    {year}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Status</label>
               <select
                 value={form.placed_status}
-                onChange={(event) => setForm((prev) => ({ ...prev, placed_status: event.target.value }))}
+                onChange={handlePlacedStatusChange}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
                 <option value="true">Placed</option>
@@ -469,12 +949,19 @@ export default function ManagePlacementRecords() {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Company Name</label>
-              <input
+              <select
                 value={form.company_name}
-                onChange={(event) => setForm((prev) => ({ ...prev, company_name: event.target.value }))}
+                onChange={handleCompanyNameChange}
+                disabled={!form.placement_year || companyOptions.length === 0}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                placeholder="Tech Mahindra"
-              />
+              >
+                <option value="">{companyOptions.length ? 'Select Company' : 'No companies available'}</option>
+                {companyOptions.map((company) => (
+                  <option key={company} value={company}>
+                    {company}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Package (LPA)</label>
@@ -489,21 +976,35 @@ export default function ManagePlacementRecords() {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Domain</label>
-              <input
+              <select
                 value={form.domain}
-                onChange={(event) => setForm((prev) => ({ ...prev, domain: event.target.value }))}
+                onChange={handleDomainChange}
+                disabled={!form.company_name || domainOptions.length === 0}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                placeholder="Software Development"
-              />
+              >
+                <option value="">{domainOptions.length ? 'Select Domain' : 'No domains available'}</option>
+                {domainOptions.map((domain) => (
+                  <option key={domain} value={domain}>
+                    {domain}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Job Role</label>
-              <input
+              <select
                 value={form.job_role}
                 onChange={(event) => setForm((prev) => ({ ...prev, job_role: event.target.value }))}
+                disabled={!form.domain || jobRoleOptions.length === 0}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                placeholder="Software Engineer"
-              />
+              >
+                <option value="">{jobRoleOptions.length ? 'Select Job Role' : 'No job roles available'}</option>
+                {jobRoleOptions.map((jobRole) => (
+                  <option key={jobRole} value={jobRole}>
+                    {jobRole}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="md:col-span-2">
               <button
@@ -520,40 +1021,6 @@ export default function ManagePlacementRecords() {
           )}
         </section>
 
-        <section className="mb-6 rounded-2xl bg-white p-6 shadow-md">
-          <h3 className="text-lg font-semibold text-gray-900">CSV Upload</h3>
-          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[auto_1fr_auto] md:items-center">
-            <button
-              type="button"
-              onClick={handleDownloadTemplate}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              <FileDown className="h-4 w-4" />
-              Download Template
-            </button>
-
-            <input
-              type="file"
-              accept=".csv"
-              onChange={(event) => setCsvFile(event.target.files?.[0] || null)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-
-            <button
-              type="button"
-              onClick={handleUploadCsv}
-              disabled={saving || !csvFile || !isBranch}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <FileUp className="h-4 w-4" />
-              Upload
-            </button>
-          </div>
-          {!isBranch && (
-            <p className="mt-2 text-xs text-amber-600">CSV upload is available only for Branch TPO accounts.</p>
-          )}
-        </section>
-
         <section className="rounded-2xl bg-white p-6 shadow-md">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="text-lg font-semibold text-gray-900">Placement Records</h3>
@@ -566,6 +1033,81 @@ export default function ManagePlacementRecords() {
                 className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
+          </div>
+
+          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            <select
+              value={tableFilters.year}
+              onChange={(event) => handleTableFilterChange('year', event.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+            >
+              <option value="">All Years</option>
+              {tableFilterOptions.years.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={tableFilters.status}
+              onChange={(event) => handleTableFilterChange('status', event.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+            >
+              <option value="">All Status</option>
+              {tableFilterOptions.statuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={tableFilters.company}
+              onChange={(event) => handleTableFilterChange('company', event.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+            >
+              <option value="">All Companies</option>
+              {tableFilterOptions.companies.map((company) => (
+                <option key={company} value={company}>
+                  {company}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={tableFilters.domain}
+              onChange={(event) => handleTableFilterChange('domain', event.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+            >
+              <option value="">All Domains</option>
+              {tableFilterOptions.domains.map((domain) => (
+                <option key={domain} value={domain}>
+                  {domain}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={tableFilters.jobRole}
+              onChange={(event) => handleTableFilterChange('jobRole', event.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+            >
+              <option value="">All Job Roles</option>
+              {tableFilterOptions.jobRoles.map((jobRole) => (
+                <option key={jobRole} value={jobRole}>
+                  {jobRole}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={resetTableFilters}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Reset Filters
+            </button>
           </div>
 
           {loading ? (
@@ -638,8 +1180,8 @@ export default function ManagePlacementRecords() {
                   <label className="text-sm font-medium text-gray-700">Student ID</label>
                   <input
                     value={editing.student_id}
-                    onChange={(event) => setEditing((prev) => ({ ...prev, student_id: event.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    readOnly
+                    className="mt-1 w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-600"
                   />
                 </div>
                 <div>
@@ -663,18 +1205,24 @@ export default function ManagePlacementRecords() {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">Year</label>
-                  <input
-                    type="number"
+                  <select
                     value={editing.placement_year}
-                    onChange={(event) => setEditing((prev) => ({ ...prev, placement_year: event.target.value }))}
+                    onChange={handleEditPlacementYearChange}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
+                  >
+                    <option value="">Select Year</option>
+                    {yearOptions.map((year) => (
+                      <option key={year} value={String(year)}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">Status</label>
                   <select
                     value={editing.placed_status}
-                    onChange={(event) => setEditing((prev) => ({ ...prev, placed_status: event.target.value }))}
+                    onChange={handleEditPlacedStatusChange}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   >
                     <option value="true">Placed</option>
@@ -683,11 +1231,19 @@ export default function ManagePlacementRecords() {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">Company</label>
-                  <input
+                  <select
                     value={editing.company_name}
-                    onChange={(event) => setEditing((prev) => ({ ...prev, company_name: event.target.value }))}
+                    onChange={handleEditCompanyNameChange}
+                    disabled={!editing.placement_year || editCompanyOptions.length === 0}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
+                  >
+                    <option value="">{editCompanyOptions.length ? 'Select Company' : 'No companies available'}</option>
+                    {editCompanyOptions.map((company) => (
+                      <option key={company} value={company}>
+                        {company}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">Package (LPA)</label>
@@ -701,19 +1257,35 @@ export default function ManagePlacementRecords() {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">Domain</label>
-                  <input
+                  <select
                     value={editing.domain}
-                    onChange={(event) => setEditing((prev) => ({ ...prev, domain: event.target.value }))}
+                    onChange={handleEditDomainChange}
+                    disabled={!editing.company_name || editDomainOptions.length === 0}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
+                  >
+                    <option value="">{editDomainOptions.length ? 'Select Domain' : 'No domains available'}</option>
+                    {editDomainOptions.map((domain) => (
+                      <option key={domain} value={domain}>
+                        {domain}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">Job Role</label>
-                  <input
+                  <select
                     value={editing.job_role}
                     onChange={(event) => setEditing((prev) => ({ ...prev, job_role: event.target.value }))}
+                    disabled={!editing.domain || editJobRoleOptions.length === 0}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
+                  >
+                    <option value="">{editJobRoleOptions.length ? 'Select Job Role' : 'No job roles available'}</option>
+                    {editJobRoleOptions.map((jobRole) => (
+                      <option key={jobRole} value={jobRole}>
+                        {jobRole}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

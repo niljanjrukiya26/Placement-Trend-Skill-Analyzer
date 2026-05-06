@@ -2,8 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
-  FileDown,
-  FileUp,
   GraduationCap,
   KeyRound,
   LayoutDashboard,
@@ -40,6 +38,31 @@ function normalizeStudentsResponse(payload) {
   return [];
 }
 
+function getStudentErrorMessage(error, fallbackMessage) {
+  const apiMessage = String(error?.response?.data?.message || '').toLowerCase();
+
+  if (
+    apiMessage.includes('student_id already exists') ||
+    apiMessage.includes('already exists in students/users collection')
+  ) {
+    return 'Student ID already exists.';
+  }
+
+  if (
+    apiMessage.includes('student_id is required') ||
+    apiMessage.includes('cgpa is required') ||
+    apiMessage.includes('backlogs is required')
+  ) {
+    return 'Please fill all required fields.';
+  }
+
+  if (apiMessage.includes('backlogs must be >= 0')) {
+    return 'Backlogs must be 0 or more.';
+  }
+
+  return error?.response?.data?.message || fallbackMessage;
+}
+
 export default function ManageStudents() {
   const navigate = useNavigate();
   const user = getCurrentUser();
@@ -54,7 +77,6 @@ export default function ManageStudents() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rows, setRows] = useState([]);
   const [toast, setToast] = useState(null);
-  const [csvFile, setCsvFile] = useState(null);
   const [editingStudentId, setEditingStudentId] = useState('');
   const [editForm, setEditForm] = useState({ cgpa: '', backlogs: '' });
   const [form, setForm] = useState({
@@ -97,28 +119,18 @@ export default function ManageStudents() {
   };
 
   const validateForm = (payload) => {
-    if (!String(payload.student_id || '').trim()) {
-      showToast('error', 'student_id is required.');
-      return false;
-    }
-
-    if (!String(payload.cgpa || '').trim()) {
-      showToast('error', 'cgpa is required.');
-      return false;
-    }
-
-    if (!String(payload.backlogs || '').trim()) {
-      showToast('error', 'backlogs is required.');
+    if (!String(payload.student_id || '').trim() || !String(payload.cgpa || '').trim() || !String(payload.backlogs || '').trim()) {
+      showToast('error', 'Please fill all required fields.');
       return false;
     }
 
     if (!Number.isFinite(Number(payload.cgpa))) {
-      showToast('error', 'cgpa must be numeric.');
+      showToast('error', 'CGPA must be a valid number.');
       return false;
     }
 
     if (!Number.isFinite(Number(payload.backlogs)) || Number(payload.backlogs) < 0) {
-      showToast('error', 'backlogs must be a number >= 0.');
+      showToast('error', 'Backlogs must be 0 or more.');
       return false;
     }
 
@@ -144,51 +156,7 @@ export default function ManageStudents() {
       await fetchStudents();
       showToast('success', message);
     } catch (error) {
-      showToast('error', error?.response?.data?.message || 'Failed to create student account.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDownloadTemplate = async () => {
-    try {
-      const response = await tpoService.downloadStudentsTemplate();
-      const blob = new Blob([response.data], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'students_template.csv';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      showToast('error', error?.response?.data?.message || 'Failed to download template.');
-    }
-  };
-
-  const handleUploadCsv = async () => {
-    if (!csvFile) {
-      showToast('error', 'Please choose a CSV file first.');
-      return;
-    }
-
-    try {
-      setSaving(true);
-      const response = await tpoService.uploadStudentsCsv(csvFile);
-      setCsvFile(null);
-      await fetchStudents();
-      const stats = response?.data?.data;
-      if (stats && typeof stats === 'object') {
-        showToast(
-          'success',
-          `CSV uploaded. Inserted: ${stats.inserted || 0}, Invalid: ${stats.skipped_invalid || 0}, Duplicates: ${stats.skipped_duplicates || 0}`
-        );
-      } else {
-        showToast('success', 'CSV uploaded successfully.');
-      }
-    } catch (error) {
-      showToast('error', error?.response?.data?.message || 'Failed to upload CSV.');
+      showToast('error', getStudentErrorMessage(error, 'Failed to create student account.'));
     } finally {
       setSaving(false);
     }
@@ -221,15 +189,20 @@ export default function ManageStudents() {
   };
 
   const handleSaveEdit = async (studentId) => {
+    if (!String(editForm.cgpa || '').trim() || !String(editForm.backlogs || '').trim()) {
+      showToast('error', 'Please fill all required fields.');
+      return;
+    }
+
     const cgpaValue = Number(editForm.cgpa);
     const backlogsValue = Number(editForm.backlogs);
 
     if (!Number.isFinite(cgpaValue)) {
-      showToast('error', 'cgpa must be numeric.');
+      showToast('error', 'CGPA must be a valid number.');
       return;
     }
     if (!Number.isFinite(backlogsValue) || backlogsValue < 0) {
-      showToast('error', 'backlogs must be a number >= 0.');
+      showToast('error', 'Backlogs must be 0 or more.');
       return;
     }
 
@@ -498,35 +471,6 @@ export default function ManageStudents() {
           </form>
         </section>
 
-        <section className="mb-6 rounded-2xl bg-white p-6 shadow-md">
-          <h3 className="text-lg font-semibold text-gray-900">CSV Upload</h3>
-          <p className="mt-1 text-xs text-gray-500">Expected columns: student_id,cgpa,backlogs</p>
-          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[auto_1fr_auto] md:items-center">
-            <button
-              type="button"
-              onClick={handleDownloadTemplate}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              <FileDown className="h-4 w-4" />
-              Download Template
-            </button>
-            <input
-              type="file"
-              accept=".csv"
-              onChange={(event) => setCsvFile(event.target.files?.[0] || null)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-            <button
-              type="button"
-              onClick={handleUploadCsv}
-              disabled={saving}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <FileUp className="h-4 w-4" />
-              Upload CSV
-            </button>
-          </div>
-        </section>
 
         <section className="rounded-2xl bg-white p-6 shadow-md">
           <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

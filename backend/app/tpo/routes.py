@@ -53,6 +53,147 @@ def _is_main_tpo_claims():
     return _normalize_role(claims.get('role')) == 'MAIN_TPO'
 
 
+def _normalize_text(value):
+    if not isinstance(value, str):
+        return ''
+    return ' '.join(value.split()).strip()
+
+
+def _sorted_unique_strings(values, reverse=False):
+    cleaned = sorted({item for item in values if isinstance(item, str) and item.strip()}, reverse=reverse)
+    return cleaned
+
+
+def _get_branch_eligible_domains(db, branch):
+    normalized_branch = normalize_branch_name(branch)
+    if not normalized_branch:
+        return set()
+
+    eligible_domains = set()
+    docs = db.domain_job_roles.find({}, {'_id': 0, 'domain': 1, 'eligible_branches': 1})
+    for doc in docs:
+        domain_name = _normalize_text(doc.get('domain'))
+        if not domain_name:
+          continue
+
+        branches = doc.get('eligible_branches', [])
+        if isinstance(branches, str):
+            branches = [branches]
+
+        normalized_branches = {
+            normalize_branch_name(item)
+            for item in branches
+            if isinstance(item, str) and item.strip()
+        }
+
+        if normalized_branch in normalized_branches:
+            eligible_domains.add(domain_name)
+
+    return eligible_domains
+
+
+def _get_company_options_by_year(db, year, branch=None):
+    try:
+        year_value = int(year)
+    except (TypeError, ValueError):
+        return []
+
+    query = {'year': year_value}
+    company_docs = db.companies.find(query, {'_id': 0, 'company_name': 1, 'domain': 1})
+
+    eligible_domains = _get_branch_eligible_domains(db, branch) if branch else set()
+    company_names = []
+    for doc in company_docs:
+        company_name = _normalize_text(doc.get('company_name'))
+        if not company_name:
+            continue
+
+        if eligible_domains:
+            domain_values = doc.get('domain', [])
+            if isinstance(domain_values, str):
+                domain_values = [domain_values]
+
+            normalized_domains = {
+                _normalize_text(item)
+                for item in domain_values
+                if isinstance(item, str) and item.strip()
+            }
+
+            if not normalized_domains.intersection(eligible_domains):
+                continue
+
+        company_names.append(company_name)
+
+    return _sorted_unique_strings(company_names)
+
+
+def _get_domain_options_by_company_and_year(db, company_name, year, branch=None):
+    try:
+        year_value = int(year)
+    except (TypeError, ValueError):
+        return []
+
+    normalized_company = _normalize_text(company_name)
+    if not normalized_company:
+        return []
+
+    docs = db.companies.find(
+        {
+            'year': year_value,
+            'company_name': normalized_company,
+        },
+        {'_id': 0, 'domain': 1},
+    )
+
+    eligible_domains = _get_branch_eligible_domains(db, branch) if branch else set()
+    domains = []
+    for doc in docs:
+        domain_values = doc.get('domain', [])
+        if isinstance(domain_values, list):
+            normalized_values = [_normalize_text(item) for item in domain_values]
+            if eligible_domains:
+                domains.extend([item for item in normalized_values if item in eligible_domains])
+            else:
+                domains.extend(normalized_values)
+        elif isinstance(domain_values, str):
+            normalized_value = _normalize_text(domain_values)
+            if not eligible_domains or normalized_value in eligible_domains:
+                domains.append(normalized_value)
+
+    return _sorted_unique_strings(domains)
+
+
+def _get_job_role_options_by_domain(db, domain, branch=None):
+    normalized_domain = _normalize_text(domain)
+    if not normalized_domain:
+        return []
+
+    query = {'domain': normalized_domain}
+    roles = list(db.domain_job_roles.find(query, {'_id': 0, 'job_role': 1, 'eligible_branches': 1}))
+
+    normalized_branch = normalize_branch_name(branch)
+    job_roles = []
+    for doc in roles:
+        if normalized_branch:
+            branches = doc.get('eligible_branches', [])
+            if isinstance(branches, str):
+                branches = [branches]
+
+            normalized_branches = {
+                normalize_branch_name(item)
+                for item in branches
+                if isinstance(item, str) and item.strip()
+            }
+            if normalized_branch not in normalized_branches:
+                continue
+
+        job_role = _normalize_text(doc.get('job_role'))
+        if job_role:
+            job_roles.append(job_role)
+
+    return _sorted_unique_strings(job_roles)
+
+
 @tpo_bp.route('/all', methods=['GET'])
 @jwt_required()
 def get_all_tpos():
@@ -111,7 +252,7 @@ def add_tpo():
 
         existing = db.users.find_one({'email': email}, {'_id': 1})
         if existing:
-            return error_response('User with this email already exists', 409)
+            return error_response('TPO with this email already exists', 409)
 
         userid = f"tpo_{uuid4().hex[:10]}"
         tpo_id = f"TPO{str(db.tpo.count_documents({}) + 1).zfill(3)}"
@@ -839,129 +980,6 @@ def reset_student_password(student_id):
         return error_response(f'Server error: {str(exc)}', 500)
 
 
-@tpo_bp.route('/students/template/csv', methods=['GET'])
-@jwt_required()
-def download_students_template():
-    """Return CSV template headers for students import."""
-    db = current_app.mongo_db
-    context = _resolve_user_context(db)
-    role = context.get('role')
-
-    if role != 'BRANCH_TPO':
-        return error_response('Only BRANCH_TPO can download student template', 403)
-
-    headers = ['student_id', 'cgpa', 'backlogs']
-    csv_content = ','.join(headers) + '\n'
-
-    return (
-        csv_content,
-        200,
-        {
-            'Content-Type': 'text/csv',
-            'Content-Disposition': 'attachment; filename=students_template.csv'
-        }
-    )
-
-
-@tpo_bp.route('/students/upload/csv', methods=['POST'])
-@jwt_required()
-def upload_students_csv():
-    """Bulk upload students for authenticated BRANCH_TPO branch from CSV."""
-    try:
-        db = current_app.mongo_db
-        context = _resolve_user_context(db)
-        role = context.get('role')
-        branch = context.get('branch')
-
-        if role != 'BRANCH_TPO':
-            return error_response('Only BRANCH_TPO can upload students', 403)
-        if not branch:
-            return error_response('Branch not found for BRANCH_TPO user', 400)
-
-        if 'file' not in request.files:
-            return error_response('CSV file is required', 400)
-
-        csv_file = request.files.get('file')
-        if not csv_file or not csv_file.filename:
-            return error_response('CSV file is required', 400)
-
-        content = csv_file.read().decode('utf-8')
-        dataframe = pd.read_csv(StringIO(content))
-
-        expected_columns = {'student_id', 'cgpa', 'backlogs'}
-        incoming_columns = set(dataframe.columns.astype(str).str.strip())
-
-        if not expected_columns.issubset(incoming_columns):
-            missing = sorted(list(expected_columns - incoming_columns))
-            return error_response(f'Missing required CSV columns: {", ".join(missing)}', 400)
-
-        existing_student_ids = set(db.students.distinct('student_id'))
-        existing_user_ids = set(db.users.distinct('userid', {'role': 'Student'}))
-        batch_ids = set()
-        records_to_insert = []
-        user_docs_to_insert = []
-        skipped_invalid = 0
-        skipped_duplicates = 0
-
-        for _, row in dataframe.iterrows():
-            try:
-                payload = {
-                    'student_id': row.get('student_id'),
-                    'cgpa': row.get('cgpa'),
-                    'backlogs': row.get('backlogs'),
-                }
-                student, user_doc = _sanitize_student_payload(payload, branch)
-                student_id = student.get('student_id')
-
-                if (
-                    student_id in existing_student_ids
-                    or student_id in existing_user_ids
-                    or student_id in batch_ids
-                ):
-                    skipped_duplicates += 1
-                    continue
-
-                records_to_insert.append(student)
-                user_docs_to_insert.append(user_doc)
-                batch_ids.add(student_id)
-            except Exception:
-                skipped_invalid += 1
-
-        if not records_to_insert:
-            return error_response('No valid students found in CSV', 400)
-
-        user_result = db.users.insert_many(user_docs_to_insert)
-        linked_student_docs = []
-        for student_doc, inserted_user_id in zip(records_to_insert, user_result.inserted_ids):
-            linked_doc = dict(student_doc)
-            linked_doc['userid'] = str(inserted_user_id)
-            linked_doc['overall_prediction_score'] = calculate_score(linked_doc, db)
-            linked_doc['last_updated'] = datetime.utcnow()
-            linked_student_docs.append(linked_doc)
-
-        try:
-            student_result = db.students.insert_many(linked_student_docs)
-        except Exception:
-            db.users.delete_many({'_id': {'$in': user_result.inserted_ids}})
-            raise
-
-        return success_response(
-            {
-                'inserted': len(student_result.inserted_ids),
-                'skipped_invalid': skipped_invalid,
-                'skipped_duplicates': skipped_duplicates,
-            },
-            'Students CSV uploaded successfully',
-            201,
-        )
-    except pd.errors.EmptyDataError:
-        return error_response('CSV file is empty', 400)
-    except PyMongoError as exc:
-        return error_response(f'Database error: {str(exc)}', 500)
-    except Exception as exc:
-        return error_response(f'Server error: {str(exc)}', 500)
-
-
 @tpo_bp.route('/update-student/<student_id>', methods=['PUT'])
 @jwt_required()
 def update_student_alias(student_id):
@@ -1128,6 +1146,99 @@ def get_placement_records():
         return error_response(f'Server error: {str(e)}', 500)
 
 
+@tpo_bp.route('/placement-records/options/years', methods=['GET'])
+@jwt_required()
+def get_placement_record_year_options():
+    try:
+        db = current_app.mongo_db
+        context = _resolve_user_context(db)
+        role = context.get('role')
+
+        if role not in ['MAIN_TPO', 'BRANCH_TPO']:
+            return error_response('Only MAIN_TPO or BRANCH_TPO can access this resource', 403)
+
+        years = db.companies.distinct('year')
+        normalized_years = sorted({int(year) for year in years if str(year).strip().isdigit()}, reverse=True)
+        return success_response(normalized_years, 'Placement year options retrieved', 200)
+    except PyMongoError as exc:
+        return error_response(f'Database error: {str(exc)}', 500)
+    except Exception as exc:
+        return error_response(f'Server error: {str(exc)}', 500)
+
+
+@tpo_bp.route('/placement-records/options/companies', methods=['GET'])
+@jwt_required()
+def get_placement_record_company_options():
+    try:
+        db = current_app.mongo_db
+        context = _resolve_user_context(db)
+        role = context.get('role')
+        branch = context.get('branch')
+
+        if role not in ['MAIN_TPO', 'BRANCH_TPO']:
+            return error_response('Only MAIN_TPO or BRANCH_TPO can access this resource', 403)
+
+        year = request.args.get('year')
+        if year is None or str(year).strip() == '':
+            return success_response([], 'Placement company options retrieved', 200)
+
+        companies = _get_company_options_by_year(db, year, branch if role == 'BRANCH_TPO' else None)
+        return success_response(companies, 'Placement company options retrieved', 200)
+    except PyMongoError as exc:
+        return error_response(f'Database error: {str(exc)}', 500)
+    except Exception as exc:
+        return error_response(f'Server error: {str(exc)}', 500)
+
+
+@tpo_bp.route('/placement-records/options/domains', methods=['GET'])
+@jwt_required()
+def get_placement_record_domain_options():
+    try:
+        db = current_app.mongo_db
+        context = _resolve_user_context(db)
+        role = context.get('role')
+        branch = context.get('branch')
+
+        if role not in ['MAIN_TPO', 'BRANCH_TPO']:
+            return error_response('Only MAIN_TPO or BRANCH_TPO can access this resource', 403)
+
+        year = request.args.get('year')
+        company_name = request.args.get('company_name')
+        if year is None or str(year).strip() == '' or not company_name or not str(company_name).strip():
+            return success_response([], 'Placement domain options retrieved', 200)
+
+        domains = _get_domain_options_by_company_and_year(db, company_name, year, branch if role == 'BRANCH_TPO' else None)
+        return success_response(domains, 'Placement domain options retrieved', 200)
+    except PyMongoError as exc:
+        return error_response(f'Database error: {str(exc)}', 500)
+    except Exception as exc:
+        return error_response(f'Server error: {str(exc)}', 500)
+
+
+@tpo_bp.route('/placement-records/options/job-roles', methods=['GET'])
+@jwt_required()
+def get_placement_record_job_role_options():
+    try:
+        db = current_app.mongo_db
+        context = _resolve_user_context(db)
+        role = context.get('role')
+        branch = context.get('branch')
+
+        if role not in ['MAIN_TPO', 'BRANCH_TPO']:
+            return error_response('Only MAIN_TPO or BRANCH_TPO can access this resource', 403)
+
+        domain = request.args.get('domain')
+        if not domain or not str(domain).strip():
+            return success_response([], 'Placement job role options retrieved', 200)
+
+        job_roles = _get_job_role_options_by_domain(db, domain, branch if role == 'BRANCH_TPO' else None)
+        return success_response(job_roles, 'Placement job role options retrieved', 200)
+    except PyMongoError as exc:
+        return error_response(f'Database error: {str(exc)}', 500)
+    except Exception as exc:
+        return error_response(f'Server error: {str(exc)}', 500)
+
+
 def _parse_bool(value):
     if isinstance(value, bool):
         return value
@@ -1160,6 +1271,19 @@ def _sanitize_placement_record(data, forced_branch):
     }
 
 
+def _placement_record_exists(db, student_id, placement_year, branch, exclude_id=None):
+    query = {
+        'student_id': str(student_id).strip(),
+        'placement_year': int(placement_year),
+        'branch': normalize_branch_name(branch),
+    }
+
+    if exclude_id and ObjectId.is_valid(str(exclude_id)):
+        query['_id'] = {'$ne': ObjectId(str(exclude_id))}
+
+    return db.placement_records.find_one(query, {'_id': 1}) is not None
+
+
 @tpo_bp.route('/placement-records', methods=['POST'])
 @jwt_required()
 def add_placement_record():
@@ -1177,6 +1301,9 @@ def add_placement_record():
 
         payload = request.get_json() or {}
         record = _sanitize_placement_record(payload, branch)
+
+        if _placement_record_exists(db, record.get('student_id'), record.get('placement_year'), branch):
+            return error_response('Placement record for this student exists', 409)
 
         result = db.placement_records.insert_one(record)
         created = db.placement_records.find_one({'_id': result.inserted_id})
@@ -1222,6 +1349,15 @@ def update_placement_record(record_id):
 
         payload = request.get_json() or {}
         updates = _sanitize_placement_record(payload, branch)
+
+        if _placement_record_exists(
+            db,
+            updates.get('student_id'),
+            updates.get('placement_year'),
+            branch,
+            exclude_id=record_id,
+        ):
+            return error_response('Placement record for this student exists', 409)
 
         query = {'_id': ObjectId(record_id), 'branch': branch}
         result = db.placement_records.update_one(query, {'$set': updates})
@@ -1278,94 +1414,6 @@ def delete_placement_record(record_id):
     except Exception as exc:
         return error_response(f'Server error: {str(exc)}', 500)
 
-
-@tpo_bp.route('/placement-records/upload', methods=['POST'])
-@jwt_required()
-def upload_placement_records_csv():
-    """Bulk upload placement records from CSV with branch enforced from authenticated BRANCH_TPO."""
-    try:
-        db = current_app.mongo_db
-        context = _resolve_user_context(db)
-        role = context.get('role')
-        branch = context.get('branch')
-
-        if role != 'BRANCH_TPO':
-            return error_response('Only BRANCH_TPO can upload placement records', 403)
-        if not branch:
-            return error_response('Branch not found for BRANCH_TPO user', 400)
-
-        if 'file' not in request.files:
-            return error_response('CSV file is required', 400)
-
-        csv_file = request.files.get('file')
-        if not csv_file or not csv_file.filename:
-            return error_response('CSV file is required', 400)
-
-        content = csv_file.read().decode('utf-8')
-        dataframe = pd.read_csv(StringIO(content))
-
-        expected_columns = {
-            'student_id', 'branch', 'cgpa', 'backlogs', 'placement_year',
-            'placed_status', 'company_name', 'package_lpa', 'domain', 'job_role'
-        }
-
-        incoming_columns = set(dataframe.columns.astype(str).str.strip())
-        if not expected_columns.issubset(incoming_columns):
-            missing = sorted(list(expected_columns - incoming_columns))
-            return error_response(f'Missing required CSV columns: {", ".join(missing)}', 400)
-
-        records_to_insert = []
-        for _, row in dataframe.iterrows():
-            try:
-                item = {
-                    'student_id': row.get('student_id'),
-                    'cgpa': row.get('cgpa'),
-                    'backlogs': row.get('backlogs'),
-                    'placement_year': row.get('placement_year'),
-                    'placed_status': row.get('placed_status'),
-                    'company_name': row.get('company_name'),
-                    'package_lpa': row.get('package_lpa'),
-                    'domain': row.get('domain'),
-                    'job_role': row.get('job_role'),
-                }
-                sanitized = _sanitize_placement_record(item, branch)
-                records_to_insert.append(sanitized)
-            except ValueError:
-                continue
-
-        if not records_to_insert:
-            return error_response('No valid records found in CSV', 400)
-
-        result = db.placement_records.insert_many(records_to_insert)
-        return success_response({'inserted': len(result.inserted_ids)}, 'CSV uploaded successfully', 201)
-    except pd.errors.EmptyDataError:
-        return error_response('CSV file is empty', 400)
-    except ValueError as exc:
-        return error_response(str(exc), 400)
-    except PyMongoError as exc:
-        return error_response(f'Database error: {str(exc)}', 500)
-    except Exception as exc:
-        return error_response(f'Server error: {str(exc)}', 500)
-
-
-@tpo_bp.route('/placement-records/template', methods=['GET'])
-@jwt_required()
-def download_placement_records_template():
-    """Return CSV template headers for placement records import."""
-    headers = [
-        'student_id', 'branch', 'cgpa', 'backlogs', 'placement_year',
-        'placed_status', 'company_name', 'package_lpa', 'domain', 'job_role'
-    ]
-    csv_content = ','.join(headers) + '\n'
-
-    return (
-        csv_content,
-        200,
-        {
-            'Content-Type': 'text/csv',
-            'Content-Disposition': 'attachment; filename=placement_records_template.csv'
-        }
-    )
 
 @tpo_bp.route('/branch-statistics', methods=['GET'])
 @jwt_required()

@@ -42,10 +42,9 @@ function toCompanyId(company) {
   return company?.id || company?._id || company?.company_id;
 }
 
-function formatPackageRange(minimumPkg, maximumPkg) {
-  const min = Number.isFinite(Number(minimumPkg)) ? Number(minimumPkg).toFixed(2) : '-';
-  const max = Number.isFinite(Number(maximumPkg)) ? Number(maximumPkg).toFixed(2) : '-';
-  return `${min} - ${max}`;
+function normalizeCompanyName(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 export default function ManageCompany() {
@@ -66,11 +65,14 @@ export default function ManageCompany() {
   const [toast, setToast] = useState(null);
   const [editing, setEditing] = useState(null);
   const [editSelectedDomain, setEditSelectedDomain] = useState('');
+  const [tableFilters, setTableFilters] = useState({
+    companyName: '',
+    year: '',
+    domain: '',
+  });
   const [form, setForm] = useState({
     company_name: '',
     required_cgpa: '',
-    minimum_pkg: '',
-    max_pkg: '',
     year: String(new Date().getFullYear()),
   });
 
@@ -124,7 +126,7 @@ export default function ManageCompany() {
   };
 
   const validateManualForm = () => {
-    const requiredFields = ['company_name', 'required_cgpa', 'minimum_pkg', 'max_pkg', 'year'];
+    const requiredFields = ['company_name', 'required_cgpa', 'year'];
     for (const key of requiredFields) {
       if (!String(form[key] || '').trim()) {
         showToast('error', 'Please fill all required fields.');
@@ -142,11 +144,6 @@ export default function ManageCompany() {
       return false;
     }
 
-    if (Number(form.minimum_pkg) > Number(form.max_pkg)) {
-      showToast('error', 'Minimum package cannot be greater than maximum package.');
-      return false;
-    }
-
     return true;
   };
 
@@ -154,14 +151,25 @@ export default function ManageCompany() {
     event.preventDefault();
     if (!validateManualForm()) return;
 
+    const duplicateForYear = rows.some(
+      (row) =>
+        Number(row.year) === Number(form.year) &&
+        normalizeCompanyName(row.company_name) === normalizeCompanyName(form.company_name)
+    );
+
+    if (duplicateForYear) {
+      showToast('error', 'This company is already added for the selected year.');
+      return;
+    }
+
     try {
       setSaving(true);
       await companyService.addCompany({
         company_id: companyId,
         company_name: form.company_name.trim(),
         required_cgpa: Number(form.required_cgpa),
-        minimum_pkg: Number(form.minimum_pkg),
-        max_pkg: Number(form.max_pkg),
+        minimum_pkg: 0,
+        max_pkg: 0,
         year: Number(form.year),
         domain: selectedDomains,
       });
@@ -169,8 +177,6 @@ export default function ManageCompany() {
       setForm({
         company_name: '',
         required_cgpa: '',
-        minimum_pkg: '',
-        max_pkg: '',
         year: String(new Date().getFullYear()),
       });
       setSelectedDomain('');
@@ -239,8 +245,6 @@ export default function ManageCompany() {
       !editing.company_id ||
       !editing.company_name ||
       !editing.required_cgpa ||
-      !editing.minimum_pkg ||
-      !editing.max_pkg ||
       !editing.year ||
       !Array.isArray(editing.domain) ||
       editing.domain.length === 0
@@ -249,13 +253,25 @@ export default function ManageCompany() {
       return;
     }
 
+    const duplicateForYear = rows.some(
+      (row) =>
+        String(toCompanyId(row)) !== String(editing.id) &&
+        Number(row.year) === Number(editing.year) &&
+        normalizeCompanyName(row.company_name) === normalizeCompanyName(editing.company_name)
+    );
+
+    if (duplicateForYear) {
+      showToast('error', 'This company is already added for the selected year.');
+      return;
+    }
+
     try {
       await companyService.updateCompany(editing.id, {
         company_id: String(editing.company_id).trim(),
         company_name: String(editing.company_name).trim(),
         required_cgpa: Number(editing.required_cgpa),
-        minimum_pkg: Number(editing.minimum_pkg),
-        max_pkg: Number(editing.max_pkg),
+        minimum_pkg: Number(editing.minimum_pkg || 0),
+        max_pkg: Number(editing.max_pkg || 0),
         year: Number(editing.year),
         domain: editing.domain,
       });
@@ -280,11 +296,127 @@ export default function ManageCompany() {
     }
   };
 
+  const tableFilterOptions = useMemo(() => {
+    const selectedCompany = String(tableFilters.companyName || '').trim().toLowerCase();
+    const selectedYear = String(tableFilters.year || '').trim();
+    const selectedDomain = String(tableFilters.domain || '').trim().toLowerCase();
+
+    const companyFilteredRows = rows.filter((row) => {
+      const rowYear = String(row.year || '').trim();
+      const rowDomains = Array.isArray(row.domain) ? row.domain : [];
+
+      if (selectedYear && rowYear !== selectedYear) return false;
+      if (
+        selectedDomain &&
+        !rowDomains.some((domain) => String(domain || '').trim().toLowerCase() === selectedDomain)
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    const yearFilteredRows = rows.filter((row) => {
+      const rowCompany = String(row.company_name || '').trim().toLowerCase();
+      const rowDomains = Array.isArray(row.domain) ? row.domain : [];
+
+      if (selectedCompany && rowCompany !== selectedCompany) return false;
+      if (
+        selectedDomain &&
+        !rowDomains.some((domain) => String(domain || '').trim().toLowerCase() === selectedDomain)
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    const domainFilteredRows = rows.filter((row) => {
+      const rowCompany = String(row.company_name || '').trim().toLowerCase();
+      const rowYear = String(row.year || '').trim();
+
+      if (selectedCompany && rowCompany !== selectedCompany) return false;
+      if (selectedYear && rowYear !== selectedYear) return false;
+      return true;
+    });
+
+    const companyNames = [
+      ...new Set(companyFilteredRows.map((row) => String(row.company_name || '').trim()).filter(Boolean)),
+    ].sort((a, b) => a.localeCompare(b));
+
+    const years = [...new Set(yearFilteredRows.map((row) => String(row.year || '').trim()).filter(Boolean))].sort(
+      (a, b) => Number(b) - Number(a)
+    );
+
+    const domains = [
+      ...new Set(
+        domainFilteredRows
+          .flatMap((row) => (Array.isArray(row.domain) ? row.domain : []))
+          .map((domain) => String(domain || '').trim())
+          .filter(Boolean)
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+
+    return { companyNames, years, domains };
+  }, [rows, tableFilters.companyName, tableFilters.year, tableFilters.domain]);
+
+  useEffect(() => {
+    if (tableFilters.companyName && !tableFilterOptions.companyNames.includes(tableFilters.companyName)) {
+      setTableFilters((prev) => ({ ...prev, companyName: '' }));
+    }
+
+    if (tableFilters.year && !tableFilterOptions.years.includes(tableFilters.year)) {
+      setTableFilters((prev) => ({ ...prev, year: '' }));
+    }
+
+    if (tableFilters.domain && !tableFilterOptions.domains.includes(tableFilters.domain)) {
+      setTableFilters((prev) => ({ ...prev, domain: '' }));
+    }
+  }, [
+    tableFilters.companyName,
+    tableFilters.year,
+    tableFilters.domain,
+    tableFilterOptions.companyNames,
+    tableFilterOptions.years,
+    tableFilterOptions.domains,
+  ]);
+
+  const handleTableFilterChange = (field, value) => {
+    setTableFilters((prev) => ({ ...prev, [field]: value }));
+    setCurrentPage(1);
+  };
+
+  const resetTableFilters = () => {
+    setTableFilters({
+      companyName: '',
+      year: '',
+      domain: '',
+    });
+    setCurrentPage(1);
+  };
+
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return rows;
-    return rows.filter((row) => String(row.company_name || '').toLowerCase().includes(query));
-  }, [rows, search]);
+
+    return rows.filter((row) => {
+      const companyName = String(row.company_name || '').trim();
+      const year = String(row.year || '').trim();
+      const domainList = Array.isArray(row.domain) ? row.domain : [];
+
+      if (tableFilters.companyName && companyName.toLowerCase() !== tableFilters.companyName.toLowerCase()) {
+        return false;
+      }
+
+      if (tableFilters.year && year !== tableFilters.year) {
+        return false;
+      }
+
+      if (tableFilters.domain && !domainList.some((domain) => String(domain || '').trim().toLowerCase() === tableFilters.domain.toLowerCase())) {
+        return false;
+      }
+
+      if (!query) return true;
+      return companyName.toLowerCase().includes(query);
+    });
+  }, [rows, search, tableFilters]);
 
   const itemsPerPage = 10;
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / itemsPerPage));
@@ -312,7 +444,7 @@ export default function ManageCompany() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search]);
+  }, [search, tableFilters]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -330,6 +462,11 @@ export default function ManageCompany() {
     return domains.filter((domain) => !currentEditDomains.includes(domain));
   }, [domains, editing]);
 
+  const companyNameOptions = useMemo(() => {
+    const names = rows.map((row) => String(row.company_name || '').trim()).filter(Boolean);
+    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
   const columns = useMemo(
     () => [
       { key: 'company_id', header: 'Company ID', width: '10%' },
@@ -339,12 +476,6 @@ export default function ManageCompany() {
         header: 'CGPA',
         width: '10%',
         render: (row) => (Number.isFinite(Number(row.required_cgpa)) ? Number(row.required_cgpa).toFixed(2) : '-'),
-      },
-      {
-        key: 'package_range',
-        header: 'Package Range',
-        width: '15%',
-        render: (row) => formatPackageRange(row.minimum_pkg, row.max_pkg),
       },
       { key: 'year', header: 'Year', width: '8%' },
       {
@@ -409,7 +540,7 @@ export default function ManageCompany() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       {toast && (
-        <div className="fixed right-4 top-4 z-[100]">
+        <div className="fixed right-4 top-4 z-[10050]">
           <div
             className={`flex items-start gap-2 rounded-xl px-4 py-3 text-sm font-medium shadow-lg ${
               toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
@@ -445,11 +576,17 @@ export default function ManageCompany() {
               <div className="sm:col-span-1">
                 <label className="text-sm font-medium text-gray-700">Company Name</label>
                 <input
+                  list="company-name-options"
                   value={form.company_name}
                   onChange={(event) => setForm((prev) => ({ ...prev, company_name: event.target.value }))}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   placeholder="Tech Mahindra"
                 />
+                <datalist id="company-name-options">
+                  {companyNameOptions.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700">Required CGPA</label>
@@ -470,28 +607,6 @@ export default function ManageCompany() {
                   onChange={(event) => setForm((prev) => ({ ...prev, year: event.target.value }))}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   placeholder="2026"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Minimum Package</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.minimum_pkg}
-                  onChange={(event) => setForm((prev) => ({ ...prev, minimum_pkg: event.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  placeholder="4.50"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Maximum Package</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.max_pkg}
-                  onChange={(event) => setForm((prev) => ({ ...prev, max_pkg: event.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  placeholder="12.00"
                 />
               </div>
               <div className="sm:col-span-2">
@@ -561,6 +676,55 @@ export default function ManageCompany() {
                 className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
+          </div>
+
+          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <select
+              value={tableFilters.companyName}
+              onChange={(event) => handleTableFilterChange('companyName', event.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+            >
+              <option value="">All Company Names</option>
+              {tableFilterOptions.companyNames.map((companyName) => (
+                <option key={companyName} value={companyName}>
+                  {companyName}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={tableFilters.year}
+              onChange={(event) => handleTableFilterChange('year', event.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+            >
+              <option value="">All Years</option>
+              {tableFilterOptions.years.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={tableFilters.domain}
+              onChange={(event) => handleTableFilterChange('domain', event.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+            >
+              <option value="">All Domains</option>
+              {tableFilterOptions.domains.map((domain) => (
+                <option key={domain} value={domain}>
+                  {domain}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={resetTableFilters}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Reset Filters
+            </button>
           </div>
 
           {loading ? (
@@ -637,16 +801,17 @@ export default function ManageCompany() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Company ID</label>
                     <input
                       value={editing.company_id}
-                      onChange={(event) => setEditing((prev) => ({ ...prev, company_id: event.target.value }))}
-                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
+                      readOnly
+                      className="w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-100 px-4 py-2.5 text-sm text-gray-600"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Company Name</label>
                     <input
+                      list="company-name-options"
                       value={editing.company_name}
-                      onChange={(event) => setEditing((prev) => ({ ...prev, company_name: event.target.value }))}
-                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
+                      readOnly
+                      className="w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-100 px-4 py-2.5 text-sm text-gray-600"
                     />
                   </div>
                 </div>
@@ -671,35 +836,8 @@ export default function ManageCompany() {
                     <input
                       type="number"
                       value={editing.year}
-                      onChange={(event) => setEditing((prev) => ({ ...prev, year: event.target.value }))}
-                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Compensation Package */}
-              <div className="space-y-4">
-                <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Compensation Package</h4>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Package (LPA)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editing.minimum_pkg}
-                      onChange={(event) => setEditing((prev) => ({ ...prev, minimum_pkg: event.target.value }))}
-                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Maximum Package (LPA)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editing.max_pkg}
-                      onChange={(event) => setEditing((prev) => ({ ...prev, max_pkg: event.target.value }))}
-                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
+                      readOnly
+                      className="w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-100 px-4 py-2.5 text-sm text-gray-600"
                     />
                   </div>
                 </div>

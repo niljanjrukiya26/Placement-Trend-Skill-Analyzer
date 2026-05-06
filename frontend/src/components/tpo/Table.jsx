@@ -31,7 +31,9 @@ export default function Table({ columns, rows, emptyLabel = 'No records found.' 
               <td
                 key={column.key}
                 className={`px-4 py-3 text-sm text-slate-700 align-top text-center ${
-                  column.key === 'domain' ? 'max-h-16 overflow-y-auto' : 'overflow-hidden text-ellipsis'
+                  column.key === 'domain' || column.key === 'job_role'
+                    ? 'whitespace-normal break-words'
+                    : 'overflow-hidden text-ellipsis'
                 }`}
                 style={column.width ? { width: column.width } : {}}
               >

@@ -50,6 +50,11 @@ function toDomainRoleId(item) {
   return item?.id || item?._id || item?.job_role_id;
 }
 
+function normalizeJobRoleName(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 export default function ManageDomain() {
   const navigate = useNavigate();
   const user = getCurrentUser();
@@ -73,6 +78,10 @@ export default function ManageDomain() {
   const [editing, setEditing] = useState(null);
   const [editSelectedSkill, setEditSelectedSkill] = useState('');
   const [editSelectedBranch, setEditSelectedBranch] = useState('');
+  const [tableFilters, setTableFilters] = useState({
+    domain: '',
+    branch: '',
+  });
   const [form, setForm] = useState({
     job_role: '',
     domain: '',
@@ -204,6 +213,14 @@ export default function ManageDomain() {
     event.preventDefault();
     if (!validateForm()) return;
 
+    const duplicateJobRole = rows.some(
+      (row) => normalizeJobRoleName(row.job_role) === normalizeJobRoleName(form.job_role)
+    );
+    if (duplicateJobRole) {
+      showToast('error', 'This job role already exists.');
+      return;
+    }
+
     try {
       setSaving(true);
       await domainService.addDomainJobRole({
@@ -294,6 +311,16 @@ export default function ManageDomain() {
       return;
     }
 
+    const duplicateJobRole = rows.some(
+      (row) =>
+        String(toDomainRoleId(row)) !== String(editing.id) &&
+        normalizeJobRoleName(row.job_role) === normalizeJobRoleName(editing.job_role)
+    );
+    if (duplicateJobRole) {
+      showToast('error', 'This job role already exists.');
+      return;
+    }
+
     try {
       await domainService.updateDomainJobRole(editing.id, {
         job_role_id: Number(editing.job_role_id),
@@ -323,16 +350,102 @@ export default function ManageDomain() {
     }
   };
 
+  const tableFilterOptions = useMemo(() => {
+    const allDomains = [...new Set(rows.map((row) => String(row.domain || '').trim()).filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b)
+    );
+
+    const allBranches = [
+      ...new Set(
+        rows
+          .flatMap((row) => (Array.isArray(row.eligible_branches) ? row.eligible_branches : []))
+          .map((branch) => String(branch || '').trim())
+          .filter(Boolean)
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+
+    const selectedDomain = String(tableFilters.domain || '').trim().toLowerCase();
+    const selectedBranch = String(tableFilters.branch || '').trim().toLowerCase();
+
+    const domains = !selectedBranch
+      ? allDomains
+      : [
+          ...new Set(
+            rows
+              .filter((row) =>
+                (Array.isArray(row.eligible_branches) ? row.eligible_branches : []).some(
+                  (branch) => String(branch || '').trim().toLowerCase() === selectedBranch
+                )
+              )
+              .map((row) => String(row.domain || '').trim())
+              .filter(Boolean)
+          ),
+        ].sort((a, b) => a.localeCompare(b));
+
+    const branches = !selectedDomain
+      ? allBranches
+      : [
+          ...new Set(
+            rows
+              .filter((row) => String(row.domain || '').trim().toLowerCase() === selectedDomain)
+              .flatMap((row) => (Array.isArray(row.eligible_branches) ? row.eligible_branches : []))
+              .map((branch) => String(branch || '').trim())
+              .filter(Boolean)
+          ),
+        ].sort((a, b) => a.localeCompare(b));
+
+    return {
+      domains,
+      branches,
+    };
+  }, [rows, tableFilters.domain, tableFilters.branch]);
+
+  useEffect(() => {
+    if (tableFilters.domain && !tableFilterOptions.domains.includes(tableFilters.domain)) {
+      setTableFilters((prev) => ({ ...prev, domain: '' }));
+    }
+
+    if (tableFilters.branch && !tableFilterOptions.branches.includes(tableFilters.branch)) {
+      setTableFilters((prev) => ({ ...prev, branch: '' }));
+    }
+  }, [tableFilters.domain, tableFilters.branch, tableFilterOptions.domains, tableFilterOptions.branches]);
+
+  const handleTableFilterChange = (field, value) => {
+    setTableFilters((prev) => ({ ...prev, [field]: value }));
+    setCurrentPage(1);
+  };
+
+  const resetTableFilters = () => {
+    setTableFilters({
+      domain: '',
+      branch: '',
+    });
+    setCurrentPage(1);
+  };
+
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return rows;
 
     return rows.filter((row) => {
       const jobRole = String(row.job_role || '').toLowerCase();
-      const domain = String(row.domain || '').toLowerCase();
-      return jobRole.includes(query) || domain.includes(query);
+      const domain = String(row.domain || '').trim();
+      const eligibleBranches = Array.isArray(row.eligible_branches) ? row.eligible_branches : [];
+
+      if (tableFilters.domain && domain.toLowerCase() !== tableFilters.domain.toLowerCase()) {
+        return false;
+      }
+
+      if (
+        tableFilters.branch &&
+        !eligibleBranches.some((branch) => String(branch || '').trim().toLowerCase() === tableFilters.branch.toLowerCase())
+      ) {
+        return false;
+      }
+
+      if (!query) return true;
+      return jobRole.includes(query) || domain.toLowerCase().includes(query);
     });
-  }, [rows, search]);
+  }, [rows, search, tableFilters]);
 
   const itemsPerPage = 10;
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / itemsPerPage));
@@ -360,7 +473,7 @@ export default function ManageDomain() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search]);
+  }, [search, tableFilters]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -467,7 +580,7 @@ export default function ManageDomain() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       {toast && (
-        <div className="fixed right-4 top-4 z-[100]">
+        <div className="fixed right-4 top-4 z-[10050]">
           <div
             className={`flex items-start gap-2 rounded-xl px-4 py-3 text-sm font-medium shadow-lg ${
               toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
@@ -528,7 +641,6 @@ export default function ManageDomain() {
                     ))}
                   </datalist>
 
-                  <p className="text-xs text-slate-500 md:col-span-2">Pick an existing domain or type a new one.</p>
                 </div>
               </div>
 
@@ -648,6 +760,42 @@ export default function ManageDomain() {
             </div>
           </div>
 
+          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <select
+              value={tableFilters.domain}
+              onChange={(event) => handleTableFilterChange('domain', event.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+            >
+              <option value="">All Domains</option>
+              {tableFilterOptions.domains.map((domain) => (
+                <option key={domain} value={domain}>
+                  {domain}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={tableFilters.branch}
+              onChange={(event) => handleTableFilterChange('branch', event.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+            >
+              <option value="">All Branches</option>
+              {tableFilterOptions.branches.map((branch) => (
+                <option key={branch} value={branch}>
+                  {branch}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={resetTableFilters}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Reset Filters
+            </button>
+          </div>
+
           {loading ? (
             <div className="h-36 animate-pulse rounded-xl bg-slate-100" />
           ) : (
@@ -721,16 +869,16 @@ export default function ManageDomain() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Job Role ID</label>
                       <input
                         value={editing.job_role_id}
-                        onChange={(event) => setEditing((prev) => ({ ...prev, job_role_id: event.target.value }))}
-                        className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
+                        readOnly
+                        className="w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-100 px-4 py-2.5 text-sm text-gray-600"
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Job Role</label>
                       <input
                         value={editing.job_role}
-                        onChange={(event) => setEditing((prev) => ({ ...prev, job_role: event.target.value }))}
-                        className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
+                        readOnly
+                        className="w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-100 px-4 py-2.5 text-sm text-gray-600"
                       />
                     </div>
                   </div>
@@ -739,8 +887,8 @@ export default function ManageDomain() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Domain</label>
                     <input
                       value={editing.domain}
-                      onChange={(event) => setEditing((prev) => ({ ...prev, domain: event.target.value }))}
-                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
+                      readOnly
+                      className="w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-100 px-4 py-2.5 text-sm text-gray-600"
                     />
                   </div>
                 </div>
@@ -847,7 +995,7 @@ export default function ManageDomain() {
                     type="submit"
                     className="flex-1 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:from-blue-700 hover:to-indigo-700 transition shadow-md"
                   >
-                    Update Domain
+                    Update Job Role
                   </button>
                   <button
                     type="button"

@@ -144,24 +144,24 @@ export const tpoService = {
   deleteStudent: (studentId) =>
     apiClient.delete(`/tpo/students/${studentId}`),
 
-  downloadStudentsTemplate: () =>
-    apiClient.get('/tpo/students/template/csv', { responseType: 'blob' }),
 
-  uploadStudentsCsv: (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    return apiClient.post('/tpo/students/upload/csv', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-  },
   
   getPlacementRecords: (year = null) => {
     const params = year ? { year } : {};
     return apiClient.get('/tpo/placement-records', { params });
   },
+
+  getPlacementRecordYearOptions: () =>
+    apiClient.get('/tpo/placement-records/options/years'),
+
+  getPlacementRecordCompanyOptions: (year) =>
+    apiClient.get('/tpo/placement-records/options/companies', { params: { year } }),
+
+  getPlacementRecordDomainOptions: (year, companyName) =>
+    apiClient.get('/tpo/placement-records/options/domains', { params: { year, company_name: companyName } }),
+
+  getPlacementRecordJobRoleOptions: (domain) =>
+    apiClient.get('/tpo/placement-records/options/job-roles', { params: { domain } }),
 
   addPlacementRecord: (payload) =>
     apiClient.post('/tpo/placement-records', payload),
@@ -172,19 +172,7 @@ export const tpoService = {
   deletePlacementRecord: (id) =>
     apiClient.delete(`/tpo/placement-records/${id}`),
 
-  uploadPlacementRecordsCsv: (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
 
-    return apiClient.post('/tpo/placement-records/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-  },
-
-  downloadPlacementTemplate: () =>
-    apiClient.get('/tpo/placement-records/template', { responseType: 'blob' }),
   
   getBranchStatistics: () =>
     apiClient.get('/tpo/branch-statistics'),

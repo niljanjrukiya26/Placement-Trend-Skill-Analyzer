@@ -35,6 +35,27 @@ def _normalize_domain(value):
     return []
 
 
+def _normalize_company_name(value):
+    if not isinstance(value, str):
+        return ''
+    # Collapse multiple spaces and compare case-insensitively.
+    return ' '.join(value.split()).strip().lower()
+
+
+def _company_exists_for_year(db, company_name, year, exclude_id=None):
+    normalized_name = _normalize_company_name(company_name)
+    if not normalized_name:
+        return False
+
+    existing_docs = list(db.companies.find({'year': int(year)}, {'_id': 1, 'company_name': 1}))
+    for doc in existing_docs:
+        if exclude_id is not None and str(doc.get('_id')) == str(exclude_id):
+            continue
+        if _normalize_company_name(doc.get('company_name', '')) == normalized_name:
+            return True
+    return False
+
+
 def _serialize_company(doc):
     return {
         'id': str(doc.get('_id')),
@@ -111,11 +132,27 @@ def add_company():
             reader = csv.DictReader(stream)
 
             rows_to_insert = []
+            seen_csv_keys = set()
             for row in reader:
                 company_id = (row.get('company_id') or '').strip()
                 company_name = (row.get('company_name') or '').strip()
                 if not company_id or not company_name:
                     continue
+
+                try:
+                    row_year = int(row.get('year') or 0)
+                except (TypeError, ValueError):
+                    continue
+
+                normalized_name = _normalize_company_name(company_name)
+                csv_key = (normalized_name, row_year)
+                if csv_key in seen_csv_keys:
+                    continue
+
+                if _company_exists_for_year(db, company_name, row_year):
+                    continue
+
+                seen_csv_keys.add(csv_key)
 
                 rows_to_insert.append({
                     'company_id': company_id,
@@ -123,7 +160,7 @@ def add_company():
                     'required_cgpa': float(row.get('required_cgpa') or 0),
                     'minimum_pkg': float(row.get('minimum_pkg') or 0),
                     'max_pkg': float(row.get('max_pkg') or 0),
-                    'year': int(row.get('year') or 0),
+                    'year': row_year,
                     'domain': _normalize_domain(row.get('domain', '')),
                 })
 
@@ -146,13 +183,21 @@ def add_company():
         if not all([company_id, company_name, required_cgpa is not None, minimum_pkg is not None, max_pkg is not None, year is not None]):
             return error_response('company_id, company_name, required_cgpa, minimum_pkg, max_pkg, year are required', 400)
 
+        try:
+            year = int(year)
+        except (TypeError, ValueError):
+            return error_response('year must be a valid number', 400)
+
+        if _company_exists_for_year(db, company_name, year):
+            return error_response('Company with this name already exists for this year', 409)
+
         company = {
             'company_id': company_id,
             'company_name': company_name,
             'required_cgpa': float(required_cgpa),
             'minimum_pkg': float(minimum_pkg),
             'max_pkg': float(max_pkg),
-            'year': int(year),
+            'year': year,
             'domain': domain,
         }
 
@@ -191,6 +236,18 @@ def update_company(company_id):
             query = {'_id': ObjectId(company_id)}
         else:
             query = {'company_id': company_id}
+
+        existing = db.companies.find_one(query)
+        if not existing:
+            return error_response('Company not found', 404)
+
+        candidate_name = updates.get('company_name', existing.get('company_name', ''))
+        candidate_year = updates.get('year', existing.get('year'))
+        if candidate_year is None:
+            return error_response('year is required', 400)
+
+        if _company_exists_for_year(db, candidate_name, candidate_year, exclude_id=existing.get('_id')):
+            return error_response('Company with this name already exists for this year', 409)
 
         result = db.companies.update_one(query, {'$set': updates})
         if result.matched_count == 0:

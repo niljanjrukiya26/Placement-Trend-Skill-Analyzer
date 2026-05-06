@@ -33,6 +33,26 @@ def _normalize_array(value):
     return []
 
 
+def _normalize_job_role_name(value):
+    if not isinstance(value, str):
+        return ''
+    return ' '.join(value.split()).strip().lower()
+
+
+def _job_role_exists_case_insensitive(db, job_role, exclude_id=None):
+    normalized_target = _normalize_job_role_name(job_role)
+    if not normalized_target:
+        return False
+
+    docs = list(db.domain_job_roles.find({}, {'_id': 1, 'job_role': 1}))
+    for doc in docs:
+        if exclude_id is not None and str(doc.get('_id')) == str(exclude_id):
+            continue
+        if _normalize_job_role_name(doc.get('job_role', '')) == normalized_target:
+            return True
+    return False
+
+
 def _serialize_domain_role(doc):
     return {
         'id': str(doc.get('_id')),
@@ -157,6 +177,9 @@ def add_domain_job_role():
         if not eligible_branches:
             return error_response('At least one eligible branch is required', 400)
 
+        if _job_role_exists_case_insensitive(db, job_role):
+            return error_response('Job role with this name already exists', 409)
+
         incoming_job_role_id = data.get('job_role_id')
         if incoming_job_role_id is not None and str(incoming_job_role_id).strip().isdigit():
             job_role_id = int(str(incoming_job_role_id).strip())
@@ -217,6 +240,14 @@ def update_domain_job_role(identifier):
             return error_response('No valid fields provided for update', 400)
 
         query = _build_query(identifier)
+        existing = db.domain_job_roles.find_one(query)
+        if not existing:
+            return error_response('Domain job role not found', 404)
+
+        candidate_job_role = updates.get('job_role', existing.get('job_role', ''))
+        if _job_role_exists_case_insensitive(db, candidate_job_role, exclude_id=existing.get('_id')):
+            return error_response('Job role with this name already exists', 409)
+
         result = db.domain_job_roles.update_one(query, {'$set': updates})
         if result.matched_count == 0:
             return error_response('Domain job role not found', 404)
