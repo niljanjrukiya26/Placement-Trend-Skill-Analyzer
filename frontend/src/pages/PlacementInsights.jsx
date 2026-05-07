@@ -22,51 +22,6 @@ function formatPackage(value) {
   return Number.isFinite(num) ? `${num.toFixed(2)} LPA` : 'N/A';
 }
 
-function regroupCompanyByYear(company) {
-  const yearMap = (company.branches || []).reduce((acc, branchBucket) => {
-    const branchName = branchBucket?.branch || 'Unknown Branch';
-
-    (branchBucket.years || []).forEach((yearEntry) => {
-      const year = yearEntry?.year;
-      const yearKey = String(year);
-
-      if (!acc[yearKey]) {
-        acc[yearKey] = {
-          year,
-          required_cgpa: yearEntry?.required_cgpa ?? null,
-          min_pkg: yearEntry?.min_pkg ?? null,
-          max_pkg: yearEntry?.max_pkg ?? null,
-          branches: [],
-        };
-      }
-
-      if (acc[yearKey].required_cgpa === null && yearEntry?.required_cgpa !== null && yearEntry?.required_cgpa !== undefined) {
-        acc[yearKey].required_cgpa = yearEntry.required_cgpa;
-      }
-      if (acc[yearKey].min_pkg === null && yearEntry?.min_pkg !== null && yearEntry?.min_pkg !== undefined) {
-        acc[yearKey].min_pkg = yearEntry.min_pkg;
-      }
-      if (acc[yearKey].max_pkg === null && yearEntry?.max_pkg !== null && yearEntry?.max_pkg !== undefined) {
-        acc[yearKey].max_pkg = yearEntry.max_pkg;
-      }
-
-      acc[yearKey].branches.push({
-        branch: branchName,
-        total_hired: yearEntry?.total_hired,
-      });
-    });
-
-    return acc;
-  }, {});
-
-  const years = Object.values(yearMap).sort((a, b) => Number(b.year) - Number(a.year));
-
-  return {
-    company_name: company.company_name,
-    years,
-  };
-}
-
 export default function PlacementInsights() {
   const navigate = useNavigate();
   const { jobRole } = useParams();
@@ -77,10 +32,7 @@ export default function PlacementInsights() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const yearFirstInsights = useMemo(
-    () => insights.map((company) => regroupCompanyByYear(company)),
-    [insights]
-  );
+  const yearFirstInsights = useMemo(() => insights, [insights]);
 
   useEffect(() => {
     const fetchInsights = async () => {
@@ -199,6 +151,10 @@ export default function PlacementInsights() {
                             <div className="stat-row">
                               <span className="stat-label">Max Package</span>
                               <span className="stat-value stat-value-max">{formatPackage(yearBucket.max_pkg)}</span>
+                            </div>
+                            <div className="stat-row">
+                              <span className="stat-label">Avg Package</span>
+                              <span className="stat-value">{formatPackage(yearBucket.avg_pkg)}</span>
                             </div>
                           </div>
 

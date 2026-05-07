@@ -19,6 +19,7 @@ def _build_placement_insights_pipeline(selected_role):
         {
             '$match': {
                 'placed_status': True,
+                'package_lpa': {'$ne': None, '$exists': True},
                 '$expr': {
                     '$eq': [
                         {
@@ -40,7 +41,11 @@ def _build_placement_insights_pipeline(selected_role):
                     'branch': '$branch',
                     'placement_year': '$placement_year'
                 },
-                'total_hired': {'$sum': 1}
+                'total_hired': {'$sum': 1},
+                'min_pkg': {'$min': '$package_lpa'},
+                'max_pkg': {'$max': '$package_lpa'},
+                'package_sum': {'$sum': '$package_lpa'},
+                'package_count': {'$sum': 1}
             }
         },
         {
@@ -49,7 +54,18 @@ def _build_placement_insights_pipeline(selected_role):
                 'company_name': '$_id.company_name',
                 'branch': '$_id.branch',
                 'placement_year': '$_id.placement_year',
-                'total_hired': 1
+                'total_hired': 1,
+                'min_pkg': 1,
+                'max_pkg': 1,
+                'package_sum': 1,
+                'package_count': 1,
+                'avg_pkg': {
+                    '$cond': [
+                        {'$gt': ['$package_count', 0]},
+                        {'$round': [{'$divide': ['$package_sum', '$package_count']}, 2]},
+                        None
+                    ]
+                }
             }
         },
         {
@@ -73,9 +89,7 @@ def _build_placement_insights_pipeline(selected_role):
                     {
                         '$project': {
                             '_id': 0,
-                            'required_cgpa': 1,
-                            'min_pkg': {'$ifNull': ['$min_pkg', '$minimum_pkg']},
-                            'max_pkg': 1
+                            'required_cgpa': 1
                         }
                     },
                     {'$limit': 1}
@@ -96,47 +110,130 @@ def _build_placement_insights_pipeline(selected_role):
                 'placement_year': 1,
                 'total_hired': 1,
                 'required_cgpa': '$company_details.required_cgpa',
-                'min_pkg': '$company_details.min_pkg',
-                'max_pkg': '$company_details.max_pkg'
+                'min_pkg': 1,
+                'max_pkg': 1,
+                'package_sum': 1,
+                'package_count': 1,
+                'avg_pkg': 1
             }
         },
         {
             '$sort': {
                 'company_name': 1,
-                'branch': 1,
-                'placement_year': 1
+                'placement_year': 1,
+                'branch': 1
             }
         },
         {
             '$group': {
                 '_id': {
                     'company_name': '$company_name',
-                    'branch': '$branch'
+                    'placement_year': '$placement_year'
                 },
                 'years': {
                     '$push': {
-                        'year': '$placement_year',
-                        'total_hired': '$total_hired',
-                        'required_cgpa': '$required_cgpa',
-                        'min_pkg': '$min_pkg',
-                        'max_pkg': '$max_pkg'
+                        'branch': '$branch',
+                        'total_hired': '$total_hired'
                     }
-                }
+                },
+                'total_hired': {'$sum': '$total_hired'},
+                'min_pkg': {'$min': '$min_pkg'},
+                'max_pkg': {'$max': '$max_pkg'},
+                'package_sum': {'$sum': '$package_sum'},
+                'package_count': {'$sum': '$package_count'}
             }
         },
         {
             '$sort': {
                 '_id.company_name': 1,
-                '_id.branch': 1
+                '_id.placement_year': 1
+            }
+        },
+        {
+            '$project': {
+                '_id': 0,
+                'company_name': '$_id.company_name',
+                'year': '$_id.placement_year',
+                'total_hired': 1,
+                'branches': '$years',
+                'required_cgpa': 1,
+                'min_pkg': 1,
+                'max_pkg': 1,
+                'avg_pkg': {
+                    '$cond': [
+                        {'$gt': ['$package_count', 0]},
+                        {'$round': [{'$divide': ['$package_sum', '$package_count']}, 2]},
+                        None
+                    ]
+                }
+            }
+        },
+        {
+            '$lookup': {
+                'from': 'companies',
+                'let': {
+                    'placement_company_name': '$company_name',
+                    'placement_year': '$year'
+                },
+                'pipeline': [
+                    {
+                        '$match': {
+                            '$expr': {
+                                '$and': [
+                                    {'$eq': ['$company_name', '$$placement_company_name']},
+                                    {'$eq': ['$year', '$$placement_year']}
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        '$project': {
+                            '_id': 0,
+                            'required_cgpa': 1
+                        }
+                    },
+                    {'$limit': 1}
+                ],
+                'as': 'company_details'
+            }
+        },
+        {
+            '$unwind': {
+                'path': '$company_details',
+                'preserveNullAndEmptyArrays': True
+            }
+        },
+        {
+            '$project': {
+                '_id': 0,
+                'company_name': 1,
+                'year': 1,
+                'total_hired': 1,
+                'required_cgpa': '$company_details.required_cgpa',
+                'min_pkg': 1,
+                'max_pkg': 1,
+                'avg_pkg': 1,
+                'branches': 1
+            }
+        },
+        {
+            '$sort': {
+                'company_name': 1,
+                'year': 1
             }
         },
         {
             '$group': {
-                '_id': '$_id.company_name',
-                'branches': {
+                '_id': '$company_name',
+                'years': {
                     '$push': {
-                        'branch': '$_id.branch',
-                        'years': '$years'
+                        'year': '$year',
+                        'total_hired': '$total_hired',
+                        'required_cgpa': '$required_cgpa',
+                        'min_pkg': '$min_pkg',
+                        'max_pkg': '$max_pkg',
+                        'avg_pkg': '$avg_pkg',
+                        'branches': '$branches'
                     }
                 }
             }
@@ -145,7 +242,7 @@ def _build_placement_insights_pipeline(selected_role):
             '$project': {
                 '_id': 0,
                 'company_name': '$_id',
-                'branches': 1
+                'years': 1
             }
         },
         {

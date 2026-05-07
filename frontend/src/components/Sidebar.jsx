@@ -123,7 +123,17 @@ export default function Sidebar() {
     return email[0].toUpperCase();
   };
 
-  const isActive = (path) => location.pathname === path;
+  const isActive = (path) => {
+    if (path === '/skill-demand') {
+      return (
+        location.pathname === '/skill-demand' ||
+        location.pathname.startsWith('/domain-skills/') ||
+        location.pathname.startsWith('/placement-insights/')
+      );
+    }
+
+    return location.pathname === path;
+  };
 
   const navItems = normalizedRole === 'Student' ? [
     { path: '/student-dashboard', label: 'Dashboard', icon: LayoutDashboard },
