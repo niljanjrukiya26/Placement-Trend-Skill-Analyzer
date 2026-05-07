@@ -8,6 +8,9 @@ const USER_ID_KEY = 'user_id';
 const USER_ROLE_KEY = 'user_role';
 const USER_EMAIL_KEY = 'user_email';
 const USER_BRANCH_KEY = 'user_branch';
+const PASSWORD_CHANGE_TOKEN_KEY = 'password_change_token';
+const PASSWORD_CHANGE_EMAIL_KEY = 'password_change_email';
+const PASSWORD_CHANGE_ROLE_KEY = 'password_change_role';
 
 export const authUtils = {
   /**
@@ -74,6 +77,27 @@ export const authUtils = {
     localStorage.removeItem(USER_ROLE_KEY);
     localStorage.removeItem(USER_EMAIL_KEY);
     localStorage.removeItem(USER_BRANCH_KEY);
+    sessionStorage.removeItem(PASSWORD_CHANGE_TOKEN_KEY);
+    sessionStorage.removeItem(PASSWORD_CHANGE_EMAIL_KEY);
+    sessionStorage.removeItem(PASSWORD_CHANGE_ROLE_KEY);
+  },
+
+  setPasswordChangeData: (token, email = '', role = '') => {
+    sessionStorage.setItem(PASSWORD_CHANGE_TOKEN_KEY, token);
+    sessionStorage.setItem(PASSWORD_CHANGE_EMAIL_KEY, email);
+    sessionStorage.setItem(PASSWORD_CHANGE_ROLE_KEY, role);
+  },
+
+  getPasswordChangeToken: () => sessionStorage.getItem(PASSWORD_CHANGE_TOKEN_KEY),
+
+  getPasswordChangeEmail: () => sessionStorage.getItem(PASSWORD_CHANGE_EMAIL_KEY),
+
+  getPasswordChangeRole: () => sessionStorage.getItem(PASSWORD_CHANGE_ROLE_KEY),
+
+  clearPasswordChangeData: () => {
+    sessionStorage.removeItem(PASSWORD_CHANGE_TOKEN_KEY);
+    sessionStorage.removeItem(PASSWORD_CHANGE_EMAIL_KEY);
+    sessionStorage.removeItem(PASSWORD_CHANGE_ROLE_KEY);
   },
 
   /**

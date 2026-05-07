@@ -6,6 +6,7 @@ import {
   Building2,
   Edit2,
   FileUp,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -55,7 +56,7 @@ export default function ManageTPO() {
   const [form, setForm] = useState({
     name: '',
     email: '',
-    password: '',
+    date_of_birth: '',
     branch: '',
     role: 'MAIN_TPO',
   });
@@ -77,7 +78,8 @@ export default function ManageTPO() {
     return sortedRows.filter((tpo) =>
       (tpo.name || '').toLowerCase().includes(query) ||
       (tpo.email || '').toLowerCase().includes(query) ||
-      (tpo.branch || '').toLowerCase().includes(query)
+      (tpo.branch || '').toLowerCase().includes(query) ||
+      (tpo.date_of_birth || '').toLowerCase().includes(query)
     );
   }, [sortedRows, search]);
 
@@ -128,7 +130,7 @@ export default function ManageTPO() {
     setError('');
 
     const requiresBranch = form.role === 'BRANCH_TPO';
-    if (!form.name || !form.email || !form.password || !form.role || (requiresBranch && !form.branch)) {
+    if (!form.name || !form.email || !form.date_of_birth || !form.role || (requiresBranch && !form.branch)) {
       setError('Please fill all required fields.');
       return;
     }
@@ -137,13 +139,13 @@ export default function ManageTPO() {
       setSaving(true);
       await tpoService.addTPO({
         tpo_name: form.name,
-        email: form.email,
-        password: form.password,
+        email: form.email.trim().toLowerCase(),
+        date_of_birth: form.date_of_birth,
         branch: requiresBranch ? form.branch : '',
         role: form.role,
       });
-      setMessage('TPO added successfully.');
-      setForm({ name: '', email: '', password: '', branch: '', role: 'MAIN_TPO' });
+      setMessage('TPO added successfully. Default password: TPO123');
+      setForm({ name: '', email: '', date_of_birth: '', branch: '', role: 'MAIN_TPO' });
       await fetchAll();
     } catch (err) {
       setError(err?.response?.data?.message || 'Failed to add TPO');
@@ -157,7 +159,7 @@ export default function ManageTPO() {
     if (!editing?.userid) return;
 
     const requiresBranch = editing.role === 'BRANCH_TPO';
-    if (!editing.name || (requiresBranch && !editing.branch)) {
+    if (!editing.name || !editing.date_of_birth || (requiresBranch && !editing.branch)) {
       setError('Please fill all required fields.');
       return;
     }
@@ -168,6 +170,7 @@ export default function ManageTPO() {
       setMessage('');
       await tpoService.updateTPO(editing.userid, {
         tpo_name: editing.name,
+        date_of_birth: editing.date_of_birth,
         branch: requiresBranch ? editing.branch : '',
         role: editing.role,
       });
@@ -176,6 +179,24 @@ export default function ManageTPO() {
       await fetchAll();
     } catch (err) {
       setError(err?.response?.data?.message || 'Failed to update TPO');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetPassword = async (userid) => {
+    if (!userid) return;
+    const confirmed = window.confirm('Reset password for this TPO to TPO123?');
+    if (!confirmed) return;
+
+    try {
+      setSaving(true);
+      setError('');
+      setMessage('');
+      await tpoService.resetTPOPassword(userid);
+      setMessage('TPO password reset successfully. New password: TPO123');
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Failed to reset TPO password');
     } finally {
       setSaving(false);
     }
@@ -251,10 +272,10 @@ export default function ManageTPO() {
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
             <input
-              type="password"
-              value={form.password}
-              onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
-              placeholder="Password"
+              type="date"
+              value={form.date_of_birth}
+              onChange={(event) => setForm((prev) => ({ ...prev, date_of_birth: event.target.value }))}
+              aria-label="Date of birth"
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
             <div className="flex gap-2">
@@ -322,6 +343,7 @@ export default function ManageTPO() {
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Name</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Email</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Branch</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">DOB</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Role</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
                   </tr>
@@ -332,6 +354,7 @@ export default function ManageTPO() {
                       <td className="px-4 py-3 text-sm text-slate-700">{row.name || '-'}</td>
                       <td className="px-4 py-3 text-sm text-slate-700">{row.email || '-'}</td>
                       <td className="px-4 py-3 text-sm text-slate-700">{row.branch || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-slate-700">{row.date_of_birth || '-'}</td>
                       <td className="px-4 py-3 text-sm text-slate-700">{row.role || '-'}</td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         <div className="flex items-center gap-2">
@@ -342,6 +365,7 @@ export default function ManageTPO() {
                                 userid: row.userid,
                                 name: row.name || '',
                                 branch: row.branch || '',
+                                date_of_birth: row.date_of_birth || '',
                                 role: normalizeRole(row.role) || 'BRANCH_TPO',
                               })
                             }
@@ -350,6 +374,16 @@ export default function ManageTPO() {
                             className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700"
                           >
                             <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleResetPassword(row.userid)}
+                            disabled={saving}
+                            aria-label="Reset Password"
+                            title="Reset Password"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 disabled:opacity-60"
+                          >
+                            <KeyRound className="h-3.5 w-3.5" />
                           </button>
                           <button
                             type="button"
@@ -384,6 +418,14 @@ export default function ManageTPO() {
                 value={editing.name}
                 onChange={(event) => setEditing((prev) => ({ ...prev, name: event.target.value }))}
                 placeholder="Name"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+
+              <input
+                type="date"
+                value={editing.date_of_birth || ''}
+                onChange={(event) => setEditing((prev) => ({ ...prev, date_of_birth: event.target.value }))}
+                aria-label="Edit date of birth"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />
 

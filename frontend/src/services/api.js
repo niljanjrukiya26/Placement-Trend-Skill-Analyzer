@@ -50,6 +50,13 @@ apiClient.interceptors.response.use(
 export const authService = {
   login: (identifier, password) =>
     apiClient.post('/auth/login', { identifier, password }),
+
+  changePassword: (token, payload) =>
+    apiClient.post('/auth/change-password', payload, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }),
   
   logout: () =>
     apiClient.post('/auth/logout'),
@@ -185,6 +192,9 @@ export const tpoService = {
 
   updateTPO: (userid, payload) =>
     apiClient.put(`/tpo/update/${userid}`, payload),
+
+  resetTPOPassword: (userid) =>
+    apiClient.post(`/tpo/${userid}/reset-password`),
 
   deleteTPO: (userid) =>
     apiClient.delete(`/tpo/delete/${userid}`),

@@ -34,9 +34,22 @@ export default function LoginPage() {
         role,
         email: userEmail,
         branch,
+        must_change_password,
+        password_change_token,
       } = response.data.data;
 
+      if (must_change_password) {
+        authUtils.clearAuthData();
+        authUtils.setPasswordChangeData(password_change_token, userEmail, role);
+        setSuccess('Default password detected. Redirecting to password change...');
+        setTimeout(() => {
+          navigate('/change-password');
+        }, 800);
+        return;
+      }
+
       // Store auth data
+      authUtils.clearPasswordChangeData();
       authUtils.setAuthData(access_token, user_id, role, userEmail, branch);
 
       setSuccess('Login successful! Redirecting...');

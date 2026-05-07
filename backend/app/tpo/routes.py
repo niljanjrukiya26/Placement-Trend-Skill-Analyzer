@@ -7,14 +7,16 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from pymongo.errors import PyMongoError
 from bson import ObjectId
 import pandas as pd
-from uuid import uuid4
 from io import StringIO
 from datetime import datetime
-from app.utils import error_response, success_response, role_required
+from app.utils import error_response, success_response, role_required, find_tpo_by_identity, build_tpo_identity_query, hash_password
 from app.branch_utils import normalize_branch_name
 from app.score_utils import calculate_score, update_student_score
 
 tpo_bp = Blueprint('tpo', __name__, url_prefix='/api/tpo')
+
+DEFAULT_TPO_PASSWORD = 'TPO123'
+RESET_TPO_PASSWORD = 'TPO123'
 
 
 def _normalize_role(role_value):
@@ -27,20 +29,20 @@ def _normalize_role(role_value):
 
 
 def _get_user_and_tpo_by_email(db, email):
-    """Fetch user by email, then fetch tpo by userid."""
+    """Fetch user by email, then fetch TPO by tpo_id."""
     safe_email = (email or '').strip().lower()
     if not safe_email:
         return None, None, error_response('Email query parameter is required', 400)
 
-    user = db.users.find_one({'email': safe_email}, {'_id': 0, 'userid': 1, 'role': 1, 'email': 1})
+    user = db.users.find_one({'email': safe_email}, {'_id': 1, 'userid': 1, 'role': 1, 'email': 1})
     if not user:
         return None, None, error_response('User not found', 404)
 
-    userid = user.get('userid')
-    if not userid:
+    user_identity = user.get('_id') or user.get('userid')
+    if not user_identity:
         return None, None, error_response('Invalid user record: userid missing', 400)
 
-    tpo = db.tpo.find_one({'userid': userid}, {'_id': 0, 'userid': 1, 'tpo_id': 1, 'tpo_name': 1, 'branch': 1})
+    tpo = find_tpo_by_identity(db, user_identity, {'_id': 0, 'tpo_id': 1, 'tpo_name': 1, 'branch': 1})
     if not tpo:
         return user, None, error_response('TPO not found', 404)
 
@@ -62,6 +64,29 @@ def _normalize_text(value):
 def _sorted_unique_strings(values, reverse=False):
     cleaned = sorted({item for item in values if isinstance(item, str) and item.strip()}, reverse=reverse)
     return cleaned
+
+
+def _parse_date_of_birth(value, required=False):
+    if value is None:
+        if required:
+            raise ValueError('date_of_birth is required')
+        return ''
+
+    text = str(value).strip()
+    if not text:
+        if required:
+            raise ValueError('date_of_birth is required')
+        return ''
+
+    try:
+        parsed = datetime.strptime(text, '%Y-%m-%d')
+    except ValueError:
+        raise ValueError('date_of_birth must be in YYYY-MM-DD format')
+
+    if parsed.date() >= datetime.utcnow().date():
+        raise ValueError('date_of_birth must be a past date')
+
+    return parsed.strftime('%Y-%m-%d')
 
 
 def _get_branch_eligible_domains(db, branch):
@@ -203,16 +228,18 @@ def get_all_tpos():
             return error_response('Only MAIN_TPO can access this resource', 403)
 
         db = current_app.mongo_db
-        tpo_docs = list(db.tpo.find({}, {'_id': 0, 'userid': 1, 'tpo_id': 1, 'tpo_name': 1, 'branch': 1}))
+        tpo_docs = list(db.tpo.find({}, {'_id': 0, 'tpo_id': 1, 'tpo_name': 1, 'branch': 1, 'date_of_birth': 1}))
 
         result = []
         for doc in tpo_docs:
-            user_doc = db.users.find_one({'userid': doc.get('userid')}, {'_id': 0, 'email': 1, 'role': 1}) or {}
+            tpo_id = doc.get('tpo_id')
+            user_doc = db.users.find_one({'userid': tpo_id}, {'_id': 0, 'email': 1, 'role': 1}) or {}
             result.append({
-                'userid': doc.get('userid'),
-                'tpo_id': doc.get('tpo_id'),
+                'userid': tpo_id,
+                'tpo_id': tpo_id,
                 'name': doc.get('tpo_name'),
                 'branch': normalize_branch_name(doc.get('branch')),
+                'date_of_birth': doc.get('date_of_birth', ''),
                 'email': user_doc.get('email'),
                 'role': _normalize_role(user_doc.get('role')),
             })
@@ -235,12 +262,12 @@ def add_tpo():
         payload = request.get_json() or {}
         tpo_name = (payload.get('tpo_name') or '').strip()
         email = (payload.get('email') or '').strip().lower()
-        password = payload.get('password') or ''
+        date_of_birth = _parse_date_of_birth(payload.get('date_of_birth'), required=True)
         branch = normalize_branch_name(payload.get('branch') or '')
         role = _normalize_role(payload.get('role'))
 
-        if not tpo_name or not email or not password or not role:
-            return error_response('tpo_name, email, password and role are required', 400)
+        if not tpo_name or not email or not role:
+            return error_response('tpo_name, email, date_of_birth and role are required', 400)
 
         if role not in ['MAIN_TPO', 'BRANCH_TPO']:
             return error_response('Role must be MAIN_TPO or BRANCH_TPO', 400)
@@ -254,35 +281,39 @@ def add_tpo():
         if existing:
             return error_response('TPO with this email already exists', 409)
 
-        userid = f"tpo_{uuid4().hex[:10]}"
         tpo_id = f"TPO{str(db.tpo.count_documents({}) + 1).zfill(3)}"
 
-        db.users.insert_one({
-            'userid': userid,
+        user_insert = db.users.insert_one({
+            'userid': tpo_id,
             'email': email,
-            'password': password,
+            'password': hash_password(DEFAULT_TPO_PASSWORD),
             'role': role,
+            'must_change_password': True,
         })
 
         try:
             db.tpo.insert_one({
-                'userid': userid,
                 'tpo_id': tpo_id,
                 'tpo_name': tpo_name,
                 'branch': branch,
+                'date_of_birth': date_of_birth,
             })
         except Exception:
-            db.users.delete_one({'userid': userid})
+            db.users.delete_one({'_id': user_insert.inserted_id})
             raise
 
         return success_response({
-            'userid': userid,
+            'userid': tpo_id,
             'tpo_id': tpo_id,
             'name': tpo_name,
             'email': email,
             'branch': branch,
+            'date_of_birth': date_of_birth,
             'role': role,
+            'default_password': DEFAULT_TPO_PASSWORD,
         }, 'TPO created successfully', 201)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
     except PyMongoError as e:
         return error_response(f'Database error: {str(e)}', 500)
     except Exception as e:
@@ -300,6 +331,7 @@ def update_tpo(userid):
         payload = request.get_json() or {}
         tpo_name = (payload.get('tpo_name') or '').strip()
         branch = normalize_branch_name(payload.get('branch') or '')
+        date_of_birth = _parse_date_of_birth(payload.get('date_of_birth')) if 'date_of_birth' in payload else None
         role = _normalize_role(payload.get('role')) if payload.get('role') else None
 
         if not tpo_name:
@@ -312,24 +344,57 @@ def update_tpo(userid):
             return error_response('branch is required for BRANCH_TPO', 400)
 
         db = current_app.mongo_db
+        tpo_doc = find_tpo_by_identity(db, userid, {'_id': 1, 'tpo_id': 1})
+        if not tpo_doc:
+            return error_response('TPO not found', 404)
+
         tpo_updates = {'tpo_name': tpo_name, 'branch': branch}
+        if date_of_birth is not None:
+            tpo_updates['date_of_birth'] = date_of_birth
 
         result = db.tpo.update_one(
-            {'userid': userid},
+            {'_id': tpo_doc.get('_id')},
             {'$set': tpo_updates}
         )
 
-        if result.matched_count == 0:
-            return error_response('TPO not found', 404)
-
         if role:
-            db.users.update_one({'userid': userid}, {'$set': {'role': role}})
+            db.users.update_one({'userid': tpo_doc.get('tpo_id')}, {'$set': {'role': role}})
 
-        return success_response({'userid': userid, 'name': tpo_name, 'branch': branch, 'role': role}, 'TPO updated successfully', 200)
+        return success_response({'userid': tpo_doc.get('tpo_id'), 'name': tpo_name, 'branch': branch, 'date_of_birth': date_of_birth, 'role': role}, 'TPO updated successfully', 200)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
     except PyMongoError as e:
         return error_response(f'Database error: {str(e)}', 500)
     except Exception as e:
         return error_response(f'Server error: {str(e)}', 500)
+
+
+@tpo_bp.route('/<userid>/reset-password', methods=['POST'])
+@jwt_required()
+def reset_tpo_password(userid):
+    """Reset one TPO password to a default value (MAIN_TPO only)."""
+    try:
+        if not _is_main_tpo_claims():
+            return error_response('Only MAIN_TPO can access this resource', 403)
+
+        db = current_app.mongo_db
+        tpo_doc = find_tpo_by_identity(db, userid, {'_id': 0, 'tpo_id': 1})
+        if not tpo_doc:
+            return error_response('TPO not found', 404)
+
+        result = db.users.update_one({'userid': tpo_doc.get('tpo_id')}, {'$set': {'password': hash_password(RESET_TPO_PASSWORD), 'must_change_password': True}})
+        if result.matched_count == 0:
+            return error_response('Linked TPO login account not found', 404)
+
+        return success_response(
+            {'userid': tpo_doc.get('tpo_id'), 'default_password': RESET_TPO_PASSWORD},
+            'TPO password reset successfully',
+            200,
+        )
+    except PyMongoError as exc:
+        return error_response(f'Database error: {str(exc)}', 500)
+    except Exception as exc:
+        return error_response(f'Server error: {str(exc)}', 500)
 
 
 @tpo_bp.route('/delete/<userid>', methods=['DELETE'])
@@ -341,8 +406,14 @@ def delete_tpo(userid):
             return error_response('Only MAIN_TPO can access this resource', 403)
 
         db = current_app.mongo_db
-        tpo_result = db.tpo.delete_one({'userid': userid})
-        user_result = db.users.delete_one({'userid': userid})
+        tpo_doc = find_tpo_by_identity(db, userid, {'_id': 1, 'tpo_id': 1})
+        if tpo_doc:
+            tpo_result = db.tpo.delete_one({'_id': tpo_doc.get('_id')})
+            user_result = db.users.delete_one({'userid': tpo_doc.get('tpo_id')})
+        else:
+            identity_query = build_tpo_identity_query(db, userid)
+            tpo_result = db.tpo.delete_one(identity_query)
+            user_result = db.users.delete_one({'userid': userid})
 
         if tpo_result.deleted_count == 0 and user_result.deleted_count == 0:
             return error_response('TPO not found', 404)
@@ -381,14 +452,14 @@ def _resolve_user_context(db):
         tpo_doc = None
 
         if user_identity:
-            tpo_doc = db.tpo.find_one({'userid': user_identity}, {'_id': 0, 'branch': 1})
+            tpo_doc = find_tpo_by_identity(db, user_identity, {'_id': 0, 'branch': 1})
 
         if not tpo_doc:
             email = claims.get('email')
             if email:
                 user_doc = db.users.find_one({'email': email}, {'_id': 0, 'userid': 1})
                 if user_doc and user_doc.get('userid'):
-                    tpo_doc = db.tpo.find_one({'userid': user_doc.get('userid')}, {'_id': 0, 'branch': 1})
+                    tpo_doc = find_tpo_by_identity(db, user_doc.get('userid'), {'_id': 0, 'branch': 1})
 
         if tpo_doc:
             branch = normalize_branch_name(tpo_doc.get('branch'))
@@ -720,11 +791,11 @@ def get_branch_students():
                 {'branch': branch},
                 {
                     '_id': 0,
-                    'userid': 1,
                     'student_id': 1,
                     'branch': 1,
                     'cgpa': 1,
                     'backlogs': 1,
+                    'date_of_birth': 1,
                     'skills': 1,
                     'interested_field': 1,
                     'created_at': 1,
@@ -752,6 +823,7 @@ def _sanitize_student_payload(data, forced_branch):
     student_id = str(data.get('student_id', '')).strip()
     cgpa = data.get('cgpa')
     backlogs = data.get('backlogs')
+    date_of_birth = _parse_date_of_birth(data.get('date_of_birth'), required=True)
 
     if not student_id:
         raise ValueError('student_id is required')
@@ -765,22 +837,24 @@ def _sanitize_student_payload(data, forced_branch):
     if backlogs_value < 0:
         raise ValueError('backlogs must be >= 0')
 
-    student_id_clean = student_id.strip()
-    default_email = f"{student_id_clean}@bvmengineering.ac.in"
+    student_id_clean = student_id.strip().upper()
+    default_email = f"{student_id_clean.lower()}@bvmengineering.ac.in"
 
     return {
         'student_id': student_id_clean,
         'branch': normalize_branch_name(forced_branch),
         'cgpa': cgpa_value,
         'backlogs': backlogs_value,
+        'date_of_birth': date_of_birth,
         'skills': [],
         'interested_field': [],
         'created_at': datetime.utcnow(),
     }, {
         'userid': student_id_clean,
         'email': default_email,
-        'password': 'Student123',
+        'password': hash_password('Student123'),
         'role': 'Student',
+        'must_change_password': True,
     }
 
 
@@ -808,7 +882,6 @@ def add_student():
             return error_response('student_id already exists in students/users collection', 409)
 
         user_insert = db.users.insert_one(user_doc)
-        student['userid'] = str(user_insert.inserted_id)
         student['overall_prediction_score'] = calculate_score(student, db)
         student['last_updated'] = datetime.utcnow()
         try:
@@ -819,9 +892,9 @@ def add_student():
 
         return success_response(
             {
-                'userid': student['userid'],
                 'student_id': student['student_id'],
                 'branch': student['branch'],
+                'date_of_birth': student.get('date_of_birth'),
                 'email': user_doc['email'],
                 'overall_prediction_score': student['overall_prediction_score'],
             },
@@ -858,6 +931,8 @@ def update_student(student_id):
             updates['cgpa'] = float(payload.get('cgpa'))
         if 'backlogs' in payload:
             updates['backlogs'] = int(float(payload.get('backlogs')))
+        if 'date_of_birth' in payload:
+            updates['date_of_birth'] = _parse_date_of_birth(payload.get('date_of_birth'))
 
         if not updates:
             return error_response('At least one field is required to update', 400)
@@ -881,6 +956,7 @@ def update_student(student_id):
                 'branch': 1,
                 'cgpa': 1,
                 'backlogs': 1,
+                'date_of_birth': 1,
                 'skills': 1,
                 'interested_field': 1,
                 'overall_prediction_score': 1,
@@ -892,8 +968,8 @@ def update_student(student_id):
         if score is not None:
             updated['overall_prediction_score'] = score
         return success_response(updated, 'Student updated successfully', 200)
-    except ValueError:
-        return error_response('cgpa and backlogs must be valid numbers', 400)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
     except PyMongoError as exc:
         return error_response(f'Database error: {str(exc)}', 500)
     except Exception as exc:
@@ -917,17 +993,13 @@ def delete_student(student_id):
 
         student_doc = db.students.find_one(
             {'student_id': student_id, 'branch': branch},
-            {'_id': 1, 'student_id': 1, 'userid': 1}
+            {'_id': 1, 'student_id': 1}
         )
         if not student_doc:
             return error_response('Student not found', 404)
 
         db.students.delete_one({'student_id': student_id, 'branch': branch})
-        linked_user_id = str(student_doc.get('userid') or '').strip()
-        if ObjectId.is_valid(linked_user_id):
-            db.users.delete_one({'_id': ObjectId(linked_user_id), 'role': 'Student'})
-        else:
-            db.users.delete_one({'userid': student_id, 'role': 'Student'})
+        db.users.delete_one({'userid': student_id, 'role': 'Student'})
 
         return success_response({'deleted': True, 'student_id': student_id}, 'Student deleted successfully', 200)
     except PyMongoError as exc:
@@ -953,19 +1025,12 @@ def reset_student_password(student_id):
 
         student_doc = db.students.find_one(
             {'student_id': student_id, 'branch': branch},
-            {'_id': 1, 'student_id': 1, 'userid': 1}
+            {'_id': 1, 'student_id': 1}
         )
         if not student_doc:
             return error_response('Student not found', 404)
 
-        linked_user_id = str(student_doc.get('userid') or '').strip()
-        user_query = None
-        if ObjectId.is_valid(linked_user_id):
-            user_query = {'_id': ObjectId(linked_user_id), 'role': 'Student'}
-        else:
-            user_query = {'userid': student_id, 'role': 'Student'}
-
-        result = db.users.update_one(user_query, {'$set': {'password': 'Student123'}})
+        result = db.users.update_one({'userid': student_id, 'role': 'Student'}, {'$set': {'password': hash_password('Student123'), 'must_change_password': True}})
         if result.matched_count == 0:
             return error_response('Linked student login account not found', 404)
 
@@ -1437,7 +1502,7 @@ def get_branch_statistics():
         db = current_app.mongo_db
         
         # Get TPO branch
-        tpo = db.tpo.find_one({'userid': user_id})
+        tpo = find_tpo_by_identity(db, user_id)
         if not tpo:
             return error_response('TPO profile not found', 404)
         

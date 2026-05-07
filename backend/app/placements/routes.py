@@ -5,7 +5,7 @@ from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
 from pymongo.errors import PyMongoError
 
 from app.branch_utils import normalize_branch_name
-from app.utils import error_response, success_response
+from app.utils import error_response, success_response, find_tpo_by_identity
 
 
 placements_bp = Blueprint('placements', __name__, url_prefix='/api/placements')
@@ -47,7 +47,7 @@ def _get_requester_context(db):
         user_id = get_jwt_identity()
 
         if role == 'BRANCH_TPO' and user_id:
-            tpo_doc = db.tpo.find_one({'userid': user_id}, {'_id': 0, 'branch': 1})
+            tpo_doc = find_tpo_by_identity(db, user_id, {'_id': 0, 'branch': 1})
             if tpo_doc:
                 branch = normalize_branch_name(tpo_doc.get('branch'))
     except Exception:

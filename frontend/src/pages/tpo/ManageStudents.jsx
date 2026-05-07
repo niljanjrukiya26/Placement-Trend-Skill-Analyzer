@@ -51,9 +51,14 @@ function getStudentErrorMessage(error, fallbackMessage) {
   if (
     apiMessage.includes('student_id is required') ||
     apiMessage.includes('cgpa is required') ||
-    apiMessage.includes('backlogs is required')
+    apiMessage.includes('backlogs is required') ||
+    apiMessage.includes('date_of_birth is required')
   ) {
     return 'Please fill all required fields.';
+  }
+
+  if (apiMessage.includes('date_of_birth must be in yyyy-mm-dd format')) {
+    return 'Date of birth must be in YYYY-MM-DD format.';
   }
 
   if (apiMessage.includes('backlogs must be >= 0')) {
@@ -78,11 +83,12 @@ export default function ManageStudents() {
   const [rows, setRows] = useState([]);
   const [toast, setToast] = useState(null);
   const [editingStudentId, setEditingStudentId] = useState('');
-  const [editForm, setEditForm] = useState({ cgpa: '', backlogs: '' });
+  const [editForm, setEditForm] = useState({ cgpa: '', backlogs: '', date_of_birth: '' });
   const [form, setForm] = useState({
     student_id: '',
     cgpa: '',
     backlogs: '',
+    date_of_birth: '',
   });
 
   const displayName = useMemo(() => user.email?.split('@')[0] || 'TPO User', [user.email]);
@@ -119,7 +125,12 @@ export default function ManageStudents() {
   };
 
   const validateForm = (payload) => {
-    if (!String(payload.student_id || '').trim() || !String(payload.cgpa || '').trim() || !String(payload.backlogs || '').trim()) {
+    if (
+      !String(payload.student_id || '').trim() ||
+      !String(payload.cgpa || '').trim() ||
+      !String(payload.backlogs || '').trim() ||
+      !String(payload.date_of_birth || '').trim()
+    ) {
       showToast('error', 'Please fill all required fields.');
       return false;
     }
@@ -144,15 +155,17 @@ export default function ManageStudents() {
     try {
       setSaving(true);
       const response = await tpoService.addStudent({
-        student_id: form.student_id.trim(),
+        student_id: form.student_id.trim().toUpperCase(),
         cgpa: Number(form.cgpa),
         backlogs: Number(form.backlogs),
+        date_of_birth: form.date_of_birth,
       });
 
       const created = response?.data?.data || {};
-      const message = `Student account created successfully (${created.student_id || form.student_id.trim()} + ${created.email || `${form.student_id.trim()}@bvmengineering.ac.in`})`;
+      const normalizedStudentId = form.student_id.trim().toUpperCase();
+      const message = `Student account created successfully (${created.student_id || normalizedStudentId} + ${created.email || `${normalizedStudentId.toLowerCase()}@bvmengineering.ac.in`})`;
 
-      setForm({ student_id: '', cgpa: '', backlogs: '' });
+      setForm({ student_id: '', cgpa: '', backlogs: '', date_of_birth: '' });
       await fetchStudents();
       showToast('success', message);
     } catch (error) {
@@ -180,16 +193,17 @@ export default function ManageStudents() {
     setEditForm({
       cgpa: row?.cgpa ?? '',
       backlogs: row?.backlogs ?? '',
+      date_of_birth: row?.date_of_birth || '',
     });
   };
 
   const handleCancelEdit = () => {
     setEditingStudentId('');
-    setEditForm({ cgpa: '', backlogs: '' });
+    setEditForm({ cgpa: '', backlogs: '', date_of_birth: '' });
   };
 
   const handleSaveEdit = async (studentId) => {
-    if (!String(editForm.cgpa || '').trim() || !String(editForm.backlogs || '').trim()) {
+    if (!String(editForm.cgpa || '').trim() || !String(editForm.backlogs || '').trim() || !String(editForm.date_of_birth || '').trim()) {
       showToast('error', 'Please fill all required fields.');
       return;
     }
@@ -211,6 +225,7 @@ export default function ManageStudents() {
       await tpoService.updateStudent(studentId, {
         cgpa: cgpaValue,
         backlogs: backlogsValue,
+        date_of_birth: editForm.date_of_birth,
       });
       await fetchStudents();
       handleCancelEdit();
@@ -297,7 +312,7 @@ export default function ManageStudents() {
       {
         key: 'backlogs',
         header: 'Backlogs',
-        width: '14%',
+        width: '12%',
         render: (row) => {
           const isEditing = editingStudentId === row.student_id;
           if (!isEditing) {
@@ -315,9 +330,29 @@ export default function ManageStudents() {
         },
       },
       {
+        key: 'date_of_birth',
+        header: 'DOB',
+        width: '18%',
+        render: (row) => {
+          const isEditing = editingStudentId === row.student_id;
+          if (!isEditing) {
+            return row.date_of_birth || '-';
+          }
+
+          return (
+            <input
+              type="date"
+              value={editForm.date_of_birth}
+              onChange={(event) => setEditForm((prev) => ({ ...prev, date_of_birth: event.target.value }))}
+              className="w-36 rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none"
+            />
+          );
+        },
+      },
+      {
         key: 'actions',
         header: 'Actions',
-        width: '30%',
+        width: '24%',
         render: (row) => (
           <div className="flex flex-wrap justify-center gap-1.5">
             {editingStudentId === row.student_id ? (
@@ -457,6 +492,15 @@ export default function ManageStudents() {
                 onChange={(event) => setForm((prev) => ({ ...prev, backlogs: event.target.value }))}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Date of Birth</label>
+              <input
+                type="date"
+                value={form.date_of_birth}
+                onChange={(event) => setForm((prev) => ({ ...prev, date_of_birth: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
             <div className="md:col-span-2">

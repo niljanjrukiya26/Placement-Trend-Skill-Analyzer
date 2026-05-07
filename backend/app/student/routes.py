@@ -42,7 +42,7 @@ def get_student_profile():
         
         # Clean response - remove MongoDB ObjectId
         student_data = {
-            'userid': student.get('userid'),
+            'userid': student.get('student_id'),
             'student_id': student.get('student_id'),
             'branch': normalize_branch_name(student.get('branch')),
             'cgpa': student.get('cgpa'),

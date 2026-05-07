@@ -10,6 +10,7 @@ import './index.css';
 
 // Pages
 import LoginPage from './pages/LoginPage';
+import ChangePassword from './pages/ChangePassword';
 import ForgotPassword from './pages/ForgotPassword';
 import StudentDashboard from './pages/StudentDashboard';
 import StudentProfile from './pages/StudentProfile';
@@ -64,6 +65,7 @@ function App() {
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/change-password" element={<ChangePassword />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
 
         {/* Student Routes */}
