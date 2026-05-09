@@ -91,6 +91,35 @@ export default function ManageStudents() {
     date_of_birth: '',
   });
 
+  // Helpers: student id format and numeric clamping/validation
+  const sanitizeStudentId = (value) => {
+    if (!value || typeof value !== 'string') return '';
+    // allow only letters and digits, uppercase
+    return value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  };
+
+  const isValidStudentId = (value) => {
+    if (!value || typeof value !== 'string') return false;
+    // Format: 2 digits, 2 letters, then one or more digits, e.g. 22IT101
+    return /^\d{2}[A-Za-z]{2}\d+$/.test(value.trim());
+  };
+
+  const clampCgpaValue = (raw) => {
+    if (raw === '' || raw === null || raw === undefined) return '';
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return '';
+    const clamped = Math.max(0, Math.min(10, n));
+    // keep up to 2 decimals
+    return String(Math.round(clamped * 100) / 100);
+  };
+
+  const clampBacklogsValue = (raw) => {
+    if (raw === '' || raw === null || raw === undefined) return '';
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return '';
+    return String(Math.max(0, Math.floor(n)));
+  };
+
   const displayName = useMemo(() => user.email?.split('@')[0] || 'TPO User', [user.email]);
   const roleLabel = isMain ? 'Main TPO' : 'Branch TPO';
   const branchLabel = user.branch || 'Branch';
@@ -137,6 +166,19 @@ export default function ManageStudents() {
 
     if (!Number.isFinite(Number(payload.cgpa))) {
       showToast('error', 'CGPA must be a valid number.');
+      return false;
+    }
+
+    // CGPA range check
+    const cg = Number(payload.cgpa);
+    if (!Number.isFinite(cg) || cg < 0 || cg > 10) {
+      showToast('error', 'CGPA must be between 0 and 10.');
+      return false;
+    }
+
+    // Student ID format
+    if (!isValidStudentId(payload.student_id)) {
+      showToast('error', 'Student ID must be in format: 2 digits, 2 letters, then digits (e.g. 22IT101).');
       return false;
     }
 
@@ -215,8 +257,13 @@ export default function ManageStudents() {
       showToast('error', 'CGPA must be a valid number.');
       return;
     }
+    // validate ranges
     if (!Number.isFinite(backlogsValue) || backlogsValue < 0) {
       showToast('error', 'Backlogs must be 0 or more.');
+      return;
+    }
+    if (cgpaValue < 0 || cgpaValue > 10) {
+      showToast('error', 'CGPA must be between 0 and 10.');
       return;
     }
 
@@ -302,8 +349,10 @@ export default function ManageStudents() {
             <input
               type="number"
               step="0.01"
-              value={editForm.cgpa}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, cgpa: event.target.value }))}
+                  value={editForm.cgpa}
+                  min={0}
+                  max={10}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, cgpa: clampCgpaValue(event.target.value) }))}
               className="w-20 rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none"
             />
           );
@@ -322,8 +371,9 @@ export default function ManageStudents() {
           return (
             <input
               type="number"
+              min={0}
               value={editForm.backlogs}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, backlogs: event.target.value }))}
+              onChange={(event) => setEditForm((prev) => ({ ...prev, backlogs: clampBacklogsValue(event.target.value) }))}
               className="w-16 rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none"
             />
           );
@@ -458,12 +508,12 @@ export default function ManageStudents() {
           <form onSubmit={handleAddStudent} className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
               <label className="text-sm font-medium text-gray-700">Student ID</label>
-              <input
-                value={form.student_id}
-                onChange={(event) => setForm((prev) => ({ ...prev, student_id: event.target.value }))}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                placeholder="22IT101"
-              />
+                <input
+                  value={form.student_id}
+                  onChange={(event) => setForm((prev) => ({ ...prev, student_id: sanitizeStudentId(event.target.value) }))}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  placeholder="22IT101"
+                />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Branch (Auto)</label>
@@ -478,8 +528,10 @@ export default function ManageStudents() {
               <input
                 type="number"
                 step="0.01"
+                min={0}
+                max={10}
                 value={form.cgpa}
-                onChange={(event) => setForm((prev) => ({ ...prev, cgpa: event.target.value }))}
+                onChange={(event) => setForm((prev) => ({ ...prev, cgpa: clampCgpaValue(event.target.value) }))}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 placeholder="8.10"
               />
@@ -488,8 +540,9 @@ export default function ManageStudents() {
               <label className="text-sm font-medium text-gray-700">Backlogs</label>
               <input
                 type="number"
+                min={0}
                 value={form.backlogs}
-                onChange={(event) => setForm((prev) => ({ ...prev, backlogs: event.target.value }))}
+                onChange={(event) => setForm((prev) => ({ ...prev, backlogs: clampBacklogsValue(event.target.value) }))}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 placeholder="0"
               />

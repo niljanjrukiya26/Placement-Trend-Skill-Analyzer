@@ -71,6 +71,32 @@ function normalizeStudentId(value) {
   return value.trim().toUpperCase();
 }
 
+function sanitizeStudentId(value) {
+  if (!value || typeof value !== 'string') return '';
+  return value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+}
+
+function isValidStudentId(value) {
+  if (!value || typeof value !== 'string') return false;
+  return /^\d{2}[A-Za-z]{2}\d+$/.test(value.trim());
+}
+
+function clampNumber(value, min, max, decimals = null) {
+  if (value === '' || value === null || value === undefined) return '';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '';
+  const clamped = Math.max(min, Math.min(max, parsed));
+  if (decimals === null) return String(clamped);
+  return String(Number(clamped.toFixed(decimals)));
+}
+
+function clampNonNegativeInt(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '';
+  return String(Math.max(0, Math.floor(parsed)));
+}
+
 export default function ManagePlacementRecords() {
   const navigate = useNavigate();
   const user = getCurrentUser();
@@ -266,6 +292,35 @@ export default function ManagePlacementRecords() {
       return false;
     }
 
+    if (!isValidStudentId(editing.student_id)) {
+      showToast('error', 'Student ID must be 2 digits, 2 letters, then digits (e.g. 22CE101).');
+      return false;
+    }
+
+    const cgpaValue = Number(editing.cgpa);
+    if (!Number.isFinite(cgpaValue) || cgpaValue < 0 || cgpaValue > 10) {
+      showToast('error', 'CGPA must be between 0 and 10.');
+      return false;
+    }
+
+    const backlogsValue = Number(editing.backlogs);
+    if (!Number.isFinite(backlogsValue) || backlogsValue < 0) {
+      showToast('error', 'Backlogs must be 0 or more.');
+      return false;
+    }
+
+    const yearValue = Number(editing.placement_year);
+    if (!Number.isFinite(yearValue)) {
+      showToast('error', 'Placement year must be a valid number.');
+      return false;
+    }
+
+    const packageValue = Number(editing.package_lpa);
+    if (editing.placed_status === 'true' && (!Number.isFinite(packageValue) || packageValue < 0)) {
+      showToast('error', 'Package must be 0 or more.');
+      return false;
+    }
+
     return true;
   };
 
@@ -292,19 +347,10 @@ export default function ManagePlacementRecords() {
   useEffect(() => {
     if (!yearOptions.length) return;
 
-    setForm((prev) => {
-      const currentYear = Number(prev.placement_year);
-      const nextYear = yearOptions.includes(currentYear) ? currentYear : yearOptions[0];
-      if (String(nextYear) === String(prev.placement_year)) return prev;
-
-      return {
-        ...prev,
-        placement_year: String(nextYear),
-        company_name: '',
-        domain: '',
-        job_role: '',
-      };
-    });
+    setForm((prev) => ({
+      ...prev,
+      placement_year: prev.placement_year || String(new Date().getFullYear()),
+    }));
   }, [yearOptions]);
 
   useEffect(() => {
@@ -376,6 +422,35 @@ export default function ManagePlacementRecords() {
       return false;
     }
 
+    if (!isValidStudentId(form.student_id)) {
+      showToast('error', 'Student ID must be 2 digits, 2 letters, then digits (e.g. 22CE101).');
+      return false;
+    }
+
+    const cgpaValue = Number(form.cgpa);
+    if (!Number.isFinite(cgpaValue) || cgpaValue < 0 || cgpaValue > 10) {
+      showToast('error', 'CGPA must be between 0 and 10.');
+      return false;
+    }
+
+    const backlogsValue = Number(form.backlogs);
+    if (!Number.isFinite(backlogsValue) || backlogsValue < 0) {
+      showToast('error', 'Backlogs must be 0 or more.');
+      return false;
+    }
+
+    const yearValue = Number(form.placement_year);
+    if (!Number.isFinite(yearValue)) {
+      showToast('error', 'Placement year must be a valid number.');
+      return false;
+    }
+
+    const packageValue = Number(form.package_lpa);
+    if (form.placed_status === 'true' && (!Number.isFinite(packageValue) || packageValue < 0)) {
+      showToast('error', 'Package must be 0 or more.');
+      return false;
+    }
+
     return true;
   };
 
@@ -398,13 +473,13 @@ export default function ManagePlacementRecords() {
     try {
       setSaving(true);
       await tpoService.addPlacementRecord({
-        student_id: form.student_id.trim(),
-        cgpa: Number(form.cgpa),
-        backlogs: Number(form.backlogs),
+        student_id: normalizeStudentId(form.student_id),
+        cgpa: Number(clampNumber(form.cgpa, 0, 10, 2)),
+        backlogs: Number(clampNonNegativeInt(form.backlogs)),
         placement_year: Number(form.placement_year),
         placed_status: form.placed_status === 'true',
         company_name: form.company_name.trim(),
-        package_lpa: Number(form.package_lpa || 0),
+        package_lpa: Number(clampNumber(form.package_lpa || 0, 0, Number.MAX_SAFE_INTEGER, 2)),
         domain: form.domain.trim(),
         job_role: form.job_role.trim(),
       });
@@ -560,13 +635,13 @@ export default function ManagePlacementRecords() {
     try {
       setSaving(true);
       await tpoService.updatePlacementRecord(editing.id, {
-        student_id: String(editing.student_id).trim(),
-        cgpa: Number(editing.cgpa),
-        backlogs: Number(editing.backlogs),
+        student_id: normalizeStudentId(editing.student_id),
+        cgpa: Number(clampNumber(editing.cgpa, 0, 10, 2)),
+        backlogs: Number(clampNonNegativeInt(editing.backlogs)),
         placement_year: Number(editing.placement_year),
         placed_status: editing.placed_status === 'true',
         company_name: String(editing.company_name || '').trim(),
-        package_lpa: Number(editing.package_lpa || 0),
+        package_lpa: Number(clampNumber(editing.package_lpa || 0, 0, Number.MAX_SAFE_INTEGER, 2)),
         domain: String(editing.domain || '').trim(),
         job_role: String(editing.job_role || '').trim(),
       });
@@ -885,7 +960,7 @@ export default function ManagePlacementRecords() {
       <main className="px-4 py-6 lg:ml-72 lg:px-8 lg:py-8">
         <header className="mb-6 rounded-2xl bg-white p-6 shadow-md">
           <h2 className="text-2xl font-bold text-gray-900">Manage Placement Records</h2>
-          <p className="mt-1 text-sm text-gray-600">Manage branch-wise placement data manually or via CSV</p>
+          <p className="mt-1 text-sm text-gray-600">Manage branch-wise placement data manually</p>
         </header>
 
         <section className="mb-6 rounded-2xl bg-white p-6 shadow-md">
@@ -895,7 +970,7 @@ export default function ManagePlacementRecords() {
               <label className="text-sm font-medium text-gray-700">Student ID</label>
               <input
                 value={form.student_id}
-                onChange={(event) => setForm((prev) => ({ ...prev, student_id: event.target.value }))}
+                onChange={(event) => setForm((prev) => ({ ...prev, student_id: sanitizeStudentId(event.target.value) }))}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 placeholder="22CE101"
               />
@@ -905,8 +980,10 @@ export default function ManagePlacementRecords() {
               <input
                 type="number"
                 step="0.01"
+                min={0}
+                max={10}
                 value={form.cgpa}
-                onChange={(event) => setForm((prev) => ({ ...prev, cgpa: event.target.value }))}
+                onChange={(event) => setForm((prev) => ({ ...prev, cgpa: clampNumber(event.target.value, 0, 10, 2) }))}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 placeholder="7.50"
               />
@@ -915,26 +992,22 @@ export default function ManagePlacementRecords() {
               <label className="text-sm font-medium text-gray-700">Backlogs</label>
               <input
                 type="number"
+                min={0}
                 value={form.backlogs}
-                onChange={(event) => setForm((prev) => ({ ...prev, backlogs: event.target.value }))}
+                onChange={(event) => setForm((prev) => ({ ...prev, backlogs: clampNonNegativeInt(event.target.value) }))}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 placeholder="0"
               />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Placement Year</label>
-              <select
+              <input
+                type="number"
                 value={form.placement_year}
                 onChange={handlePlacementYearChange}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              >
-                <option value="">Select Year</option>
-                {yearOptions.map((year) => (
-                  <option key={year} value={String(year)}>
-                    {year}
-                  </option>
-                ))}
-              </select>
+                placeholder={String(new Date().getFullYear())}
+              />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Status</label>
@@ -968,8 +1041,9 @@ export default function ManagePlacementRecords() {
               <input
                 type="number"
                 step="0.01"
+                min={0}
                 value={form.package_lpa}
-                onChange={(event) => setForm((prev) => ({ ...prev, package_lpa: event.target.value }))}
+                onChange={(event) => setForm((prev) => ({ ...prev, package_lpa: clampNumber(event.target.value, 0, Number.MAX_SAFE_INTEGER, 2) }))}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 placeholder="6.80"
               />
@@ -1189,8 +1263,10 @@ export default function ManagePlacementRecords() {
                   <input
                     type="number"
                     step="0.01"
+                    min={0}
+                    max={10}
                     value={editing.cgpa}
-                    onChange={(event) => setEditing((prev) => ({ ...prev, cgpa: event.target.value }))}
+                    onChange={(event) => setEditing((prev) => ({ ...prev, cgpa: clampNumber(event.target.value, 0, 10, 2) }))}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   />
                 </div>
@@ -1198,25 +1274,21 @@ export default function ManagePlacementRecords() {
                   <label className="text-sm font-medium text-gray-700">Backlogs</label>
                   <input
                     type="number"
+                    min={0}
                     value={editing.backlogs}
-                    onChange={(event) => setEditing((prev) => ({ ...prev, backlogs: event.target.value }))}
+                    onChange={(event) => setEditing((prev) => ({ ...prev, backlogs: clampNonNegativeInt(event.target.value) }))}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">Year</label>
-                  <select
+                  <input
+                    type="number"
                     value={editing.placement_year}
                     onChange={handleEditPlacementYearChange}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  >
-                    <option value="">Select Year</option>
-                    {yearOptions.map((year) => (
-                      <option key={year} value={String(year)}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder={String(new Date().getFullYear())}
+                  />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">Status</label>
@@ -1250,8 +1322,9 @@ export default function ManagePlacementRecords() {
                   <input
                     type="number"
                     step="0.01"
+                    min={0}
                     value={editing.package_lpa}
-                    onChange={(event) => setEditing((prev) => ({ ...prev, package_lpa: event.target.value }))}
+                    onChange={(event) => setEditing((prev) => ({ ...prev, package_lpa: clampNumber(event.target.value, 0, Number.MAX_SAFE_INTEGER, 2) }))}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   />
                 </div>

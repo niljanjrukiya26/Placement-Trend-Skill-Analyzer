@@ -61,6 +61,14 @@ export default function ManageTPO() {
     role: 'MAIN_TPO',
   });
 
+  // Validation helpers: sanitize and validate name/email on client side
+  const sanitizeName = (value) => (value || '').replace(/[^A-Za-z\s]/g, '');
+  const isValidName = (value) => /^[A-Za-z\s]+$/.test((value || '').trim());
+  const isValidEmail = (value) => {
+    if (!value || typeof value !== 'string') return false;
+    return /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(value.trim());
+  };
+
   const [editing, setEditing] = useState(null);
 
   const displayName = user.email?.split('@')[0] || 'TPO User';
@@ -135,6 +143,16 @@ export default function ManageTPO() {
       return;
     }
 
+    if (!isValidName(form.name)) {
+      setError('Name must contain only alphabets and spaces.');
+      return;
+    }
+
+    if (!isValidEmail(form.email)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
     try {
       setSaving(true);
       await tpoService.addTPO({
@@ -161,6 +179,11 @@ export default function ManageTPO() {
     const requiresBranch = editing.role === 'BRANCH_TPO';
     if (!editing.name || !editing.date_of_birth || (requiresBranch && !editing.branch)) {
       setError('Please fill all required fields.');
+      return;
+    }
+
+    if (!isValidName(editing.name)) {
+      setError('Name must contain only alphabets and spaces.');
       return;
     }
 
@@ -260,7 +283,7 @@ export default function ManageTPO() {
           <form onSubmit={handleAdd} className="grid grid-cols-1 gap-3 md:grid-cols-5">
             <input
               value={form.name}
-              onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+              onChange={(event) => setForm((prev) => ({ ...prev, name: sanitizeName(event.target.value) }))}
               placeholder="Name"
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
@@ -416,7 +439,7 @@ export default function ManageTPO() {
             <form onSubmit={handleUpdate} className="space-y-3">
               <input
                 value={editing.name}
-                onChange={(event) => setEditing((prev) => ({ ...prev, name: event.target.value }))}
+                onChange={(event) => setEditing((prev) => ({ ...prev, name: sanitizeName(event.target.value) }))}
                 placeholder="Name"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />

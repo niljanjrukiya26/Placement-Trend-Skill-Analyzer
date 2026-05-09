@@ -144,6 +144,13 @@ export default function ManageCompany() {
       return false;
     }
 
+    // validate CGPA range
+    const cg = Number(form.required_cgpa);
+    if (!Number.isFinite(cg) || cg < 0 || cg > 10) {
+      showToast('error', 'Required CGPA must be a number between 0 and 10.');
+      return false;
+    }
+
     return true;
   };
 
@@ -250,6 +257,13 @@ export default function ManageCompany() {
       editing.domain.length === 0
     ) {
       showToast('error', 'Please fill all required fields in edit form.');
+      return;
+    }
+
+    // validate editing CGPA range
+    const editCg = Number(editing.required_cgpa);
+    if (!Number.isFinite(editCg) || editCg < 0 || editCg > 10) {
+      showToast('error', 'Required CGPA must be a number between 0 and 10.');
       return;
     }
 
@@ -594,7 +608,19 @@ export default function ManageCompany() {
                   type="number"
                   step="0.1"
                   value={form.required_cgpa}
-                  onChange={(event) => setForm((prev) => ({ ...prev, required_cgpa: event.target.value }))}
+                  min={0}
+                  max={10}
+                  onChange={(event) => {
+                    const raw = event.target.value;
+                    if (raw === '') {
+                      setForm((prev) => ({ ...prev, required_cgpa: '' }));
+                      return;
+                    }
+                    const n = Number(raw);
+                    if (!Number.isFinite(n)) return;
+                    const clamped = Math.max(0, Math.min(10, n));
+                    setForm((prev) => ({ ...prev, required_cgpa: String(clamped) }));
+                  }}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   placeholder="6.5"
                 />
@@ -826,8 +852,20 @@ export default function ManageCompany() {
                     <input
                       type="number"
                       step="0.1"
-                      value={editing.required_cgpa}
-                      onChange={(event) => setEditing((prev) => ({ ...prev, required_cgpa: event.target.value }))}
+                        value={editing.required_cgpa}
+                        min={0}
+                        max={10}
+                        onChange={(event) => {
+                          const raw = event.target.value;
+                          if (raw === '') {
+                            setEditing((prev) => ({ ...prev, required_cgpa: '' }));
+                            return;
+                          }
+                          const n = Number(raw);
+                          if (!Number.isFinite(n)) return;
+                          const clamped = Math.max(0, Math.min(10, n));
+                          setEditing((prev) => ({ ...prev, required_cgpa: String(clamped) }));
+                        }}
                       className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
                     />
                   </div>
